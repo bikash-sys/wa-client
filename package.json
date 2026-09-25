@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-msg-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Simple WhatsApp Web client for Node.js with QR authentication, persistent sessions, messaging, media, and event handling.",
   "keywords": [
     "whatsapp",

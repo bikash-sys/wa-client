@@ -2,7 +2,7 @@
 
 > Simple, developer-friendly WhatsApp Web client for Node.js with QR authentication, named persistent sessions, messaging, media attachments, and event handling. Built to feel as intuitive as Nodemailer.
 
-[![npm version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
+[![npm version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org)
 
@@ -26,6 +26,7 @@ Each WhatsApp account is stored as a named session. Scan the QR code once, give 
 ## Features
 
 - 🚀 **Nodemailer-like Simplicity**: Clean, promise-based `wa.send()` API.
+- ⚡ **Auto-Connect & Clean Process Exit**: One-shot sends auto-connect with saved credentials and exit naturally without process hangs.
 - 📱 **QR Authentication**: Simple QR code event emission with automatic terminal QR code rendering (`printQRInTerminal: true`).
 - 💾 **Named Persistent Sessions**: Each account is stored separately in `./auth/<session>/` (e.g. `./auth/personal/`, `./auth/business/`).
 - 👥 **Multiple Accounts in One Process**: Run multiple WhatsApp accounts simultaneously without credential crosstalk.
@@ -341,6 +342,9 @@ interface WhatsAppOptions {
 
   /** Base interval between reconnect attempts in milliseconds. Defaults to 2000 */
   reconnectIntervalMs?: number;
+
+  /** Keep implicit auto-connect socket open instead of closing after send. Defaults to false */
+  keepAlive?: boolean;
 
   /** Custom transport implementation for testing / mocking */
   transport?: WhatsAppTransport;
