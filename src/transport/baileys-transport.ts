@@ -54,16 +54,22 @@ export class BaileysTransport
   private sessionStore: SessionStore;
   private logger: Logger;
   private printQR: boolean;
+  private qrCount = 0;
   private state: ConnectionState = "disconnected";
   private isExplicitDisconnect = false;
   private isExplicitDestroy = false;
 
-  constructor(options: { sessionPath: string; logger: Logger; printQR?: boolean }) {
+  constructor(options: {
+    sessionPath: string;
+    logger: Logger;
+    printQR?: boolean;
+    printQRInTerminal?: boolean;
+  }) {
     super();
     // Suppress sensitive cryptographic session state logged by libsignal internals
     patchLibsignalLogs();
     this.logger = options.logger;
-    this.printQR = options.printQR ?? false;
+    this.printQR = Boolean(options.printQRInTerminal ?? options.printQR ?? false);
     this.sessionStore = new SessionStore(options.sessionPath, this.logger);
   }
 
@@ -136,11 +142,13 @@ export class BaileysTransport
         }
 
         if (connection === "open") {
+          this.qrCount = 0;
           this.setState("connected");
           this.logger.info("WhatsApp connection established.");
           this.emit("connected");
           this.emit("ready");
         } else if (connection === "close") {
+          this.qrCount = 0;
           const error = lastDisconnect?.error as
             { output?: { statusCode?: number }; message?: string } | undefined;
           const statusCode = error?.output?.statusCode;
@@ -195,6 +203,7 @@ export class BaileysTransport
    * Disconnects the socket without revoking credentials.
    */
   public async disconnect(): Promise<void> {
+    this.qrCount = 0;
     this.isExplicitDisconnect = true;
     if (this.socket) {
       try {
@@ -211,6 +220,7 @@ export class BaileysTransport
    * Logs out from WhatsApp, revoking credentials and clearing session data.
    */
   public async logout(): Promise<void> {
+    this.qrCount = 0;
     this.isExplicitDisconnect = true;
     if (this.socket) {
       try {
@@ -229,6 +239,7 @@ export class BaileysTransport
    * Completely destroys the transport, closing sockets and removing all event listeners.
    */
   public async destroy(): Promise<void> {
+    this.qrCount = 0;
     this.isExplicitDestroy = true;
     await this.disconnect();
     this.removeAllListeners();
@@ -401,17 +412,43 @@ export class BaileysTransport
   }
 
   private renderTerminalQR(qrString: string): void {
-    console.log("\nWhatsApp Mailer");
-    console.log("-----------------------------------------");
-    console.log("Scan this QR code using:");
-    console.log("WhatsApp → Linked Devices → Link a Device\n");
+    const generate = getQRGenerator();
+    if (!generate) {
+      this.logger.error("qrcode-terminal is not available for terminal QR rendering.");
+      return;
+    }
 
     try {
-      qrcode.generate(qrString, { small: true });
+      generate(qrString, { small: true }, (asciiQR: string) => {
+        // In interactive TTY environments, clear terminal on QR refreshes to avoid terminal flooding
+        if (this.qrCount > 0 && process.stdout.isTTY) {
+          console.clear();
+        }
+        this.qrCount++;
+
+        console.log("\nScan this QR code with WhatsApp:\n");
+        console.log(asciiQR);
+        if (this.qrCount > 1) {
+          console.log(`(QR refreshed - attempt ${this.qrCount})\n`);
+        } else {
+          console.log("(Open WhatsApp → Linked Devices → Link a Device)\n");
+        }
+      });
     } catch (err) {
       this.logger.error("Failed to render QR in terminal:", err);
     }
-
-    console.log("-----------------------------------------\n");
   }
+}
+
+type QRGenerator = (input: string, opts: { small: boolean }, cb?: (output: string) => void) => void;
+
+function getQRGenerator(): QRGenerator | undefined {
+  if (typeof qrcode?.generate === "function") {
+    return qrcode.generate.bind(qrcode);
+  }
+  const defaultObj = (qrcode as unknown as { default?: { generate?: QRGenerator } })?.default;
+  if (typeof defaultObj?.generate === "function") {
+    return defaultObj.generate.bind(defaultObj);
+  }
+  return undefined;
 }

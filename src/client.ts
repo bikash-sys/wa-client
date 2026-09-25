@@ -2,6 +2,7 @@ import { TypedEventEmitter } from "./events/event-emitter.js";
 import { BaileysTransport } from "./transport/baileys-transport.js";
 import { ConnectionManager } from "./connection/connection-manager.js";
 import { MessageService } from "./messages/message-service.js";
+import { DEFAULT_CONFIG } from "./config.js";
 import { resolveLogger, type Logger } from "./utils/logger.js";
 import type { WhatsAppTransport } from "./transport/transport.interface.js";
 import type {
@@ -45,14 +46,27 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
   constructor(options: WhatsAppOptions = {}) {
     super();
 
+    const sessionPath = options.session ?? options.authDir ?? DEFAULT_CONFIG.SESSION_DIR;
+    const shouldPrintQR = Boolean(
+      options.printQRInTerminal ?? options.printQR ?? DEFAULT_CONFIG.PRINT_QR,
+    );
+
     this.options = {
-      session: "./session",
-      printQR: false,
-      reconnect: true,
-      maxReconnectAttempts: 5,
-      reconnectIntervalMs: 2000,
+      session: sessionPath,
+      authDir: sessionPath,
+      printQR: shouldPrintQR,
+      printQRInTerminal: shouldPrintQR,
+      reconnect: DEFAULT_CONFIG.RECONNECT,
+      maxReconnectAttempts: DEFAULT_CONFIG.MAX_RECONNECT_ATTEMPTS,
+      reconnectIntervalMs: DEFAULT_CONFIG.RECONNECT_INTERVAL_MS,
       ...options,
     };
+
+    // Ensure resolved/normalized values take precedence
+    this.options.session = sessionPath;
+    this.options.authDir = sessionPath;
+    this.options.printQR = shouldPrintQR;
+    this.options.printQRInTerminal = shouldPrintQR;
 
     this.logger = resolveLogger(this.options.logger);
 
@@ -63,6 +77,7 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
         sessionPath: this.options.session!,
         logger: this.logger,
         printQR: this.options.printQR,
+        printQRInTerminal: this.options.printQRInTerminal,
       });
 
     this.connectionManager = new ConnectionManager(this.transport, this.logger, {

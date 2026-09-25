@@ -18,10 +18,21 @@ export interface WhatsAppOptions {
   session?: string;
 
   /**
+   * Alias for `session`. Path to the session/authentication directory.
+   */
+  authDir?: string;
+
+  /**
    * If true, automatically renders the QR code to the terminal when required.
    * Defaults to false.
    */
   printQR?: boolean;
+
+  /**
+   * Alias for `printQR`. If true, automatically renders the QR code to the terminal when required.
+   * Defaults to false.
+   */
+  printQRInTerminal?: boolean;
 
   /**
    * Custom logger instance, log level, or false to disable all internal logging.

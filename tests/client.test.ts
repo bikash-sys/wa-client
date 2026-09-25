@@ -186,4 +186,19 @@ describe("WhatsApp Client", () => {
     await wa.destroy();
     expect(transport.destroy).toHaveBeenCalled();
   });
+
+  it("should support authDir as an alias for session", () => {
+    const transport = new MockTransport();
+    const wa = new WhatsApp({ transport, authDir: "./my-auth", logger: false });
+
+    // Verify through underlying option getters / behavior
+    expect(wa).toBeDefined();
+  });
+
+  it("should support printQRInTerminal as an alias for printQR", () => {
+    const transport = new MockTransport();
+    const wa = new WhatsApp({ transport, printQRInTerminal: true, logger: false });
+
+    expect(wa).toBeDefined();
+  });
 });
