@@ -1,3 +1,6 @@
+// Apply libsignal log patch immediately on package load — must be first import
+import "./utils/patch-libsignal.js";
+
 import { WhatsApp } from "./client.js";
 
 // Main Client
@@ -44,6 +47,7 @@ export {
 } from "./utils/phone.js";
 
 export { DefaultLogger, SilentLogger, resolveLogger, sanitizeLogArg } from "./utils/logger.js";
+export { patchLibsignalLogs } from "./utils/patch-libsignal.js";
 export type { Logger, LogLevel } from "./utils/logger.js";
 
 // Public Type Definitions

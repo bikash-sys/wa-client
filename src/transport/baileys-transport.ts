@@ -12,6 +12,7 @@ import { TypedEventEmitter } from "../events/event-emitter.js";
 import { SessionStore } from "../auth/session-store.js";
 import { WhatsAppError, ConnectionError, MessageError } from "../errors/errors.js";
 import { createPinoLogger, type Logger } from "../utils/logger.js";
+import { patchLibsignalLogs } from "../utils/patch-libsignal.js";
 import { jidToPhoneNumber } from "../utils/phone.js";
 import type {
   ConnectionState,
@@ -59,6 +60,8 @@ export class BaileysTransport
 
   constructor(options: { sessionPath: string; logger: Logger; printQR?: boolean }) {
     super();
+    // Suppress sensitive cryptographic session state logged by libsignal internals
+    patchLibsignalLogs();
     this.logger = options.logger;
     this.printQR = options.printQR ?? false;
     this.sessionStore = new SessionStore(options.sessionPath, this.logger);
