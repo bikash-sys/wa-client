@@ -12,12 +12,12 @@ Treat the session directory with the same level of care as private cryptographic
    chmod 700 ./session
    chmod 600 ./session/*
    ```
-3. **Never log sensitive data**: Do not print session objects, private keys, pre-keys, or authorization headers into logs. `whatsapp-mailer`'s internal logger automatically redacts sensitive authentication fields.
+3. **Never log sensitive data**: Do not print session objects, private keys, pre-keys, or authorization headers into logs. `wp-client`'s internal logger automatically redacts sensitive authentication fields.
 4. **Environment isolation**: Store credentials in persistent, isolated volumes in containerized deployments (e.g., Docker secrets or private container volume mounts).
 5. **Session Revocation**: If credentials are compromised, immediately disconnect the session from your WhatsApp mobile app under **Linked Devices** -> tap the device -> **Log Out**.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in `whatsapp-mailer`, please report it responsibly by contacting the maintainers directly or opening a private security advisory on GitHub.
+If you discover a security vulnerability in `wp-client`, please report it responsibly by contacting the maintainers directly or opening a private security advisory on GitHub.
 
 Please do not disclose security issues in public issues or discussions until a fix has been prepared and published.

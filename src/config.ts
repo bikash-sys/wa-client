@@ -1,5 +1,5 @@
 /**
- * Default configuration constants for whatsapp-mailer.
+ * Default configuration constants for wp-client.
  */
 export const DEFAULT_CONFIG = {
   SESSION_DIR: "./session",

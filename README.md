@@ -1,8 +1,8 @@
-# whatsapp-mailer
+# wp-client
 
 > Simple, developer-friendly WhatsApp Web client for Node.js with QR authentication, persistent sessions, messaging, media attachments, and event handling. Built to feel as intuitive as Nodemailer.
 
-[![npm version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://www.npmjs.com/package/whatsapp-mailer)
+[![npm version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://www.npmjs.com/package/wp-client)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org)
 
@@ -10,7 +10,7 @@
 
 ## Important Notice
 
-**whatsapp-mailer is an unofficial WhatsApp Web client wrapper.**
+**wp-client is an unofficial WhatsApp Web client wrapper.**
 It is **not** an official Meta or WhatsApp API, SDK, or product, and is **not affiliated with, maintained, authorized, or endorsed by Meta Platforms, Inc. or WhatsApp LLC**.
 
 This library is designed for legitimate automation, personal notifications, server alerts, internal tools, and customer assistance bots. It does **not** provide tools for spamming, bulk blasts, scraping, contact harvesting, or bypassing WhatsApp restrictions. Always adhere to WhatsApp's Terms of Service and applicable privacy regulations.
@@ -37,7 +37,7 @@ This library is designed for legitimate automation, personal notifications, serv
 ## Installation
 
 ```bash
-npm install whatsapp-mailer
+npm install wp-client
 ```
 
 *(Requires Node.js 18.0.0 or higher)*
@@ -47,7 +47,7 @@ npm install whatsapp-mailer
 ## Quick Start
 
 ```typescript
-import { WhatsApp } from "whatsapp-mailer";
+import { WhatsApp } from "wp-client";
 
 const wa = new WhatsApp({
   session: "./session",
@@ -91,7 +91,7 @@ const wa = new WhatsApp({
 
 The terminal will display:
 ```text
-WhatsApp Mailer
+Scan this QR code with WhatsApp:
 -----------------------------------------
 Scan this QR code using:
 WhatsApp → Linked Devices → Link a Device
@@ -124,7 +124,7 @@ const wa = new WhatsApp({
 
 - **First Launch**: Emits `"qr"` and waits for pairing.
 - **Subsequent Launches**: Reuses saved credentials and connects immediately without emitting `"qr"`.
-- **Corrupted Sessions**: If session files become corrupt or unreadable, `whatsapp-mailer` detects this and clears the corrupted state gracefully rather than throwing uncaught JSON syntax errors.
+- **Corrupted Sessions**: If session files become corrupt or unreadable, `wp-client` detects this and clears the corrupted state gracefully rather than throwing uncaught JSON syntax errors.
 
 ### Multi-Account Sessions
 Manage separate WhatsApp accounts simultaneously by pointing to different session directories:
@@ -280,7 +280,7 @@ wa.on("message", async (msg) => {
 
 ## Reconnection
 
-`whatsapp-mailer` features intelligent reconnection management:
+`wp-client` features intelligent reconnection management:
 - **Automatic Exponential Backoff**: Retries with increasing delay (`2s`, `4s`, `8s`, `16s`, `30s`) with randomized jitter to prevent thundering herd problems.
 - **Configurable Limits**: Set `maxReconnectAttempts` (default: 5) to control retry limits.
 - **Disable Auto-Reconnect**: Pass `reconnect: false` if your application manages its own lifecycle.
@@ -330,7 +330,7 @@ interface WhatsAppOptions {
 
 ## TypeScript
 
-`whatsapp-mailer` is written in TypeScript and exports all public interfaces:
+`wp-client` is written in TypeScript and exports all public interfaces:
 
 ```typescript
 import type {
@@ -345,7 +345,7 @@ import type {
   IncomingMessage,
   WhatsAppEvents,
   Logger,
-} from "whatsapp-mailer";
+} from "wp-client";
 ```
 
 ---
@@ -362,7 +362,7 @@ import {
   InvalidPhoneNumberError,
   MessageError,
   SessionError,
-} from "whatsapp-mailer";
+} from "wp-client";
 
 try {
   await wa.sendMessage("bad-number", "Test");
@@ -438,4 +438,4 @@ npm run test:integration
 
 ## License
 
-[MIT](LICENSE) © 2026 whatsapp-mailer Contributors
+[MIT](LICENSE) © 2026 wp-client Contributors

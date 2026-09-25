@@ -1,6 +1,6 @@
-# Contributing to whatsapp-mailer
+# Contributing to wp-client
 
-Thank you for your interest in contributing to `whatsapp-mailer`!
+Thank you for your interest in contributing to `wp-client`!
 
 ## Code of Conduct
 
@@ -14,8 +14,8 @@ We strictly prohibit any contributions that promote:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/placeholder/whatsapp-mailer.git
-   cd whatsapp-mailer
+   git clone https://github.com/placeholder/wp-client.git
+   cd wp-client
    ```
 
 2. **Install dependencies**:

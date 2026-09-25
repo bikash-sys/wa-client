@@ -1,5 +1,5 @@
 /**
- * Base error class for all whatsapp-mailer errors.
+ * Base error class for all wp-client errors.
  */
 export class WhatsAppError extends Error {
   /** Machine-readable error code */

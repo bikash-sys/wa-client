@@ -25,7 +25,7 @@ import type {
  *
  * @example
  * ```typescript
- * import { WhatsApp } from "whatsapp-mailer";
+ * import { WhatsApp } from "wp-client";
  *
  * const wa = new WhatsApp({ session: "./session", printQR: true });
  *
@@ -109,7 +109,7 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
    * Provides access to the underlying low-level socket client.
    *
    * @warning Advanced usage only. Direct interactions with the raw client bypass
-   * the high-level guarantees provided by whatsapp-mailer.
+   * the high-level guarantees provided by wp-client.
    */
   public getRawClient<T = unknown>(): T | undefined {
     return this.transport.getRawClient<T>();

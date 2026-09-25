@@ -65,7 +65,7 @@ export class DefaultLogger implements Logger {
   private level: LogLevel;
   private prefix: string;
 
-  constructor(level: LogLevel = "info", prefix = "[whatsapp-mailer]") {
+  constructor(level: LogLevel = "info", prefix = "[wp-client]") {
     this.level = level;
     this.prefix = prefix;
   }

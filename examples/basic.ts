@@ -28,7 +28,7 @@ async function main() {
     console.log(`Sending message to ${targetNumber}...`);
 
     try {
-      const result = await wa.sendMessage(targetNumber, "Hello from whatsapp-mailer! 🚀");
+      const result = await wa.sendMessage(targetNumber, "Hello from wp-client! 🚀");
       console.log("✓ Message sent successfully:", result);
     } catch (err) {
       console.error("Failed to send message:", err);

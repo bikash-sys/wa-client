@@ -123,7 +123,7 @@ applyPrototypePatch();
  *
  * @example
  * ```typescript
- * import { patchLibsignalLogs } from "whatsapp-mailer";
+ * import { patchLibsignalLogs } from "wp-client";
  * patchLibsignalLogs(); // apply before calling makeWASocket
  * ```
  */

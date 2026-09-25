@@ -1,5 +1,5 @@
 {
-  "name": "whatsapp-mailer",
+  "name": "wp-client",
   "version": "0.1.0",
   "description": "Simple WhatsApp Web client for Node.js with QR authentication, persistent sessions, messaging, media, and event handling.",
   "keywords": [
@@ -11,18 +11,18 @@
     "bot",
     "qr-code",
     "client",
-    "mailer"
+    "wp-client"
   ],
   "license": "MIT",
   "author": "",
   "repository": {
     "type": "git",
-    "url": "https://github.com/placeholder/whatsapp-mailer.git"
+    "url": "https://github.com/placeholder/wp-client.git"
   },
   "bugs": {
-    "url": "https://github.com/placeholder/whatsapp-mailer/issues"
+    "url": "https://github.com/placeholder/wp-client/issues"
   },
-  "homepage": "https://github.com/placeholder/whatsapp-mailer#readme",
+  "homepage": "https://github.com/placeholder/wp-client#readme",
   "engines": {
     "node": ">=18.0.0"
   },
