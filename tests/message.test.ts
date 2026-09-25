@@ -140,23 +140,124 @@ describe("MessageService", () => {
   });
 
   describe("sendDocument", () => {
-    it("should send document with auto-extracted filename from path", async () => {
+    it("should sanitize document filename to prevent directory traversal", async () => {
       const transport = createMockTransport();
       const service = new MessageService(transport);
 
-      const docPath = path.join(TEST_MEDIA_DIR, "invoice.pdf");
+      const docPath = path.join(TEST_MEDIA_DIR, "secret.pdf");
       fs.writeFileSync(docPath, Buffer.from("pdf-contents"));
 
       await service.sendDocument({
         to: "919876543210",
         path: docPath,
+        filename: "../../evil/payload.pdf",
       });
 
       expect(transport.sendMediaMessage).toHaveBeenCalledWith(
         "919876543210@s.whatsapp.net",
         "document",
         { path: docPath },
-        expect.objectContaining({ filename: "invoice.pdf" }),
+        expect.objectContaining({ filename: "payload.pdf" }),
+      );
+    });
+
+    it("should reject empty buffer (0 bytes)", async () => {
+      const transport = createMockTransport();
+      const service = new MessageService(transport);
+
+      await expect(
+        service.sendDocument({
+          to: "919876543210",
+          data: Buffer.alloc(0),
+          filename: "test.pdf",
+        }),
+      ).rejects.toThrow(MessageError);
+    });
+
+    it("should reject media exceeding 100MB limit", async () => {
+      const transport = createMockTransport();
+      const service = new MessageService(transport);
+
+      // Create a real buffer with modified length property to simulate huge buffer without allocating 100MB RAM
+      const hugeBuffer = Buffer.from("tiny");
+      Object.defineProperty(hugeBuffer, "length", { value: 101 * 1024 * 1024 });
+
+      await expect(
+        service.sendDocument({
+          to: "919876543210",
+          data: hugeBuffer,
+          filename: "huge.pdf",
+        }),
+      ).rejects.toThrow(/exceeds maximum allowed size/);
+    });
+
+    it("should reject non-buffer data when data option is used", async () => {
+      const transport = createMockTransport();
+      const service = new MessageService(transport);
+
+      await expect(
+        service.sendDocument({
+          to: "919876543210",
+          data: "not-a-buffer" as unknown as Buffer,
+          filename: "test.pdf",
+        }),
+      ).rejects.toThrow(MessageError);
+    });
+
+    it("should reject when neither path nor data is provided", async () => {
+      const transport = createMockTransport();
+      const service = new MessageService(transport);
+
+      await expect(
+        service.sendDocument({
+          to: "919876543210",
+          filename: "test.pdf",
+        } as unknown as Parameters<typeof service.sendDocument>[0]),
+      ).rejects.toThrow(MessageError);
+    });
+  });
+
+  describe("sendVideo and sendAudio", () => {
+    it("should validate and send video message", async () => {
+      const transport = createMockTransport();
+      const service = new MessageService(transport);
+
+      const vidPath = path.join(TEST_MEDIA_DIR, "video.mp4");
+      fs.writeFileSync(vidPath, Buffer.from("video-bytes"));
+
+      await service.sendVideo({
+        to: "919876543210",
+        path: vidPath,
+        caption: "A video clip",
+        ptv: true,
+      });
+
+      expect(transport.sendMediaMessage).toHaveBeenCalledWith(
+        "919876543210@s.whatsapp.net",
+        "video",
+        { path: vidPath },
+        expect.objectContaining({ caption: "A video clip", ptv: true }),
+      );
+    });
+
+    it("should validate and send audio message with ptt option", async () => {
+      const transport = createMockTransport();
+      const service = new MessageService(transport);
+
+      const audPath = path.join(TEST_MEDIA_DIR, "voice.ogg");
+      fs.writeFileSync(audPath, Buffer.from("audio-bytes"));
+
+      await service.sendAudio({
+        to: "919876543210",
+        path: audPath,
+        ptt: true,
+      });
+
+      expect(transport.sendMediaMessage).toHaveBeenCalledWith(
+        "919876543210@s.whatsapp.net",
+        "audio",
+        { path: audPath },
+        expect.objectContaining({ ptt: true }),
       );
     });
   });

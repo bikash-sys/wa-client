@@ -23,7 +23,7 @@ export function validateSessionName(name: string): string {
 
   const trimmed = name.trim();
 
-  // Explicit checks for path traversal patterns and directory separators
+  // Explicit checks for path traversal patterns, directory separators, and control characters
   if (
     trimmed === "." ||
     trimmed === ".." ||
@@ -48,6 +48,31 @@ export function validateSessionName(name: string): string {
   }
 
   return trimmed;
+}
+
+/**
+ * Asserts that a session profile name combined with an auth root directory
+ * strictly resolves to a subpath inside the auth root directory without escaping.
+ *
+ * @param authRoot - Root authentication directory
+ * @param sessionName - The session name to validate and resolve
+ * @returns The fully resolved, verified session directory path
+ */
+export function assertSafeSessionPath(authRoot: string, sessionName: string): string {
+  const validName = validateSessionName(sessionName);
+  const resolvedAuthRoot = path.resolve(authRoot);
+  const resolvedSessionPath = path.resolve(resolvedAuthRoot, validName);
+
+  const relative = path.relative(resolvedAuthRoot, resolvedSessionPath);
+
+  if (relative.startsWith("..") || path.isAbsolute(relative) || relative !== validName) {
+    throw new SessionError(
+      `Session path "${sessionName}" escapes the configured auth directory "${authRoot}"`,
+      "ERR_INVALID_SESSION_PATH",
+    );
+  }
+
+  return resolvedSessionPath;
 }
 
 /**
@@ -221,8 +246,7 @@ export class SessionStore {
    */
   public static sessionExists(authRoot: string, sessionName: string): boolean {
     try {
-      const validName = validateSessionName(sessionName);
-      const sessionPath = path.join(path.resolve(authRoot), validName);
+      const sessionPath = assertSafeSessionPath(authRoot, sessionName);
       return fs.existsSync(sessionPath) && fs.statSync(sessionPath).isDirectory();
     } catch {
       return false;
@@ -233,8 +257,7 @@ export class SessionStore {
    * Deletes a session directory from disk.
    */
   public static removeSessionDirectory(authRoot: string, sessionName: string): void {
-    const validName = validateSessionName(sessionName);
-    const sessionPath = path.join(path.resolve(authRoot), validName);
+    const sessionPath = assertSafeSessionPath(authRoot, sessionName);
     if (fs.existsSync(sessionPath)) {
       fs.rmSync(sessionPath, { recursive: true, force: true });
     }

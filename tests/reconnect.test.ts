@@ -100,4 +100,18 @@ describe("ConnectionManager", () => {
     expect(scheduled).toBe(false);
     expect(onReconnecting).not.toHaveBeenCalled();
   });
+
+  it("should allow scheduling reconnect after resume", () => {
+    const transport = createMockTransport();
+    const manager = new ConnectionManager(transport, new SilentLogger());
+
+    manager.stop();
+    expect(manager.scheduleReconnect(vi.fn(), vi.fn())).toBe(false);
+
+    manager.resume();
+    const onReconnecting = vi.fn();
+    expect(manager.scheduleReconnect(onReconnecting, vi.fn())).toBe(true);
+    expect(onReconnecting).toHaveBeenCalled();
+    manager.stop();
+  });
 });

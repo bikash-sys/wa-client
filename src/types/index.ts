@@ -59,6 +59,13 @@ export interface WhatsAppOptions {
   reconnectIntervalMs?: number;
 
   /**
+   * If true, prevents auto-disconnecting one-shot sends and keeps the connection active indefinitely.
+   * By default (false), one-shot sends without active message listeners or explicit `connect()`
+   * will gracefully disconnect once all in-flight sends complete so the process can exit naturally.
+   */
+  keepAlive?: boolean;
+
+  /**
    * Custom transport implementation (used for mocking, testing, or alternative backends).
    */
   transport?: WhatsAppTransport;

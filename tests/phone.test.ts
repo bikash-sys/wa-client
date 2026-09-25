@@ -6,6 +6,7 @@ import {
   jidToPhoneNumber,
   isWhatsAppJid,
   isGroupJid,
+  isLidJid,
 } from "../src/utils/phone.js";
 import { InvalidPhoneNumberError } from "../src/errors/errors.js";
 
@@ -83,20 +84,38 @@ describe("Phone number utilities", () => {
     });
   });
 
-  describe("isWhatsAppJid and isGroupJid", () => {
+  describe("isWhatsAppJid, isGroupJid, isLidJid", () => {
     it("should identify user JIDs", () => {
       expect(isWhatsAppJid("919876543210@s.whatsapp.net")).toBe(true);
       expect(isGroupJid("919876543210@s.whatsapp.net")).toBe(false);
+      expect(isLidJid("919876543210@s.whatsapp.net")).toBe(false);
     });
 
     it("should identify group JIDs", () => {
       expect(isWhatsAppJid("12345-67890@g.us")).toBe(true);
       expect(isGroupJid("12345-67890@g.us")).toBe(true);
+      expect(isLidJid("12345-67890@g.us")).toBe(false);
+    });
+
+    it("should identify LID JIDs", () => {
+      expect(isWhatsAppJid("1234567890@lid")).toBe(true);
+      expect(isGroupJid("1234567890@lid")).toBe(false);
+      expect(isLidJid("1234567890@lid")).toBe(true);
+    });
+
+    it("should normalize and preserve LID and newsletter JIDs", () => {
+      expect(normalizePhoneNumber("1234567890@lid")).toBe("1234567890@lid");
+      expect(toWhatsAppJid("1234567890@lid")).toBe("1234567890@lid");
+      expect(jidToPhoneNumber("1234567890:1@lid")).toBe("1234567890");
+
+      expect(normalizePhoneNumber("1234567890@newsletter")).toBe("1234567890@newsletter");
+      expect(toWhatsAppJid("1234567890@newsletter")).toBe("1234567890@newsletter");
     });
 
     it("should return false for plain phone numbers", () => {
       expect(isWhatsAppJid("919876543210")).toBe(false);
       expect(isGroupJid("919876543210")).toBe(false);
+      expect(isLidJid("919876543210")).toBe(false);
     });
   });
 });

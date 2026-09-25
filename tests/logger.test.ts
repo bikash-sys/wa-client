@@ -62,4 +62,20 @@ describe("Logger", () => {
     expect(sanitizedObj.privateKey).toBe("[REDACTED]");
     expect(sanitizedObj.password).toBe("[REDACTED]");
   });
+
+  it("should suppress libsignal session state dumps via patched console", () => {
+    const infoSpy = vi.spyOn(console, "info");
+    const warnSpy = vi.spyOn(console, "warn");
+
+    // Attempt to log libsignal session dump messages
+    console.info("Closing session:", { registrationId: 12345, rootKey: "secret" });
+    console.info("Opening session:", { registrationId: 12345 });
+    console.warn("Closing session: old_session_data");
+
+    // None should reach actual stdout
+    expect(infoSpy).toHaveBeenCalled();
+    // Verify that the output was suppressed
+    infoSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
 });

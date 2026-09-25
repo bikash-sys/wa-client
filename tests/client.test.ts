@@ -365,7 +365,7 @@ describe("WhatsApp Client", () => {
     await business.destroy();
   });
 
-  it("should auto-connect on send() when disconnected", async () => {
+  it("should auto-connect on send() and disconnect for one-shot send", async () => {
     const transport = new MockTransport();
     const wa = new WhatsApp({ transport, session: "auto-conn", logger: false });
 
@@ -374,22 +374,58 @@ describe("WhatsApp Client", () => {
     const result = await wa.send("919340748552", "Hello via auto-connect!");
 
     expect(transport.connect).toHaveBeenCalledTimes(1);
-    expect(wa.isConnected()).toBe(true);
     expect(result.id).toBe("sent-text-1");
+    // One-shot send auto-disconnects so process can exit cleanly
+    expect(transport.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it("should send immediately without reconnecting if already connected", async () => {
+  it("should keep connection alive when keepAlive is true or connect() was called", async () => {
     const transport = new MockTransport();
-    const wa = new WhatsApp({ transport, session: "already-conn", logger: false });
+    const wa = new WhatsApp({
+      transport,
+      session: "keep-alive-session",
+      keepAlive: true,
+      logger: false,
+    });
+
+    const result = await wa.send("919340748552", "Persistent message");
+    expect(result.id).toBe("sent-text-1");
+    expect(wa.isConnected()).toBe(true);
+    expect(transport.disconnect).not.toHaveBeenCalled();
+
+    await wa.destroy();
+  });
+
+  it("should stay connected across multiple sends when explicitly connected", async () => {
+    const transport = new MockTransport();
+    const wa = new WhatsApp({ transport, session: "explicit-conn", logger: false });
 
     await wa.connect();
     expect(transport.connect).toHaveBeenCalledTimes(1);
+    expect(wa.isConnected()).toBe(true);
 
     await wa.send("919340748552", "Msg 1");
     await wa.send("919340748552", "Msg 2");
 
     expect(transport.connect).toHaveBeenCalledTimes(1);
     expect(transport.sendTextMessage).toHaveBeenCalledTimes(2);
+    expect(wa.isConnected()).toBe(true);
+    expect(transport.disconnect).not.toHaveBeenCalled();
+
+    await wa.destroy();
+  });
+
+  it("should stay connected when active message listeners exist", async () => {
+    const transport = new MockTransport();
+    const wa = new WhatsApp({ transport, session: "listener-session", logger: false });
+
+    wa.on("message", () => {});
+
+    await wa.send("919340748552", "Message with active listener");
+    expect(wa.isConnected()).toBe(true);
+    expect(transport.disconnect).not.toHaveBeenCalled();
+
+    await wa.destroy();
   });
 
   it("should share a single connection attempt across concurrent send() calls", async () => {
@@ -471,7 +507,12 @@ describe("WhatsApp Client", () => {
       }, 5);
     });
 
-    const wa = new WhatsApp({ transport, session: "new-qr-session", logger: false });
+    const wa = new WhatsApp({
+      transport,
+      session: "new-qr-session",
+      keepAlive: true,
+      logger: false,
+    });
     const qrSpy = vi.fn();
     wa.on("qr", qrSpy);
 
@@ -480,6 +521,8 @@ describe("WhatsApp Client", () => {
     expect(qrSpy).toHaveBeenCalledWith("new-session-qr-123");
     expect(result.id).toBe("sent-text-1");
     expect(wa.isConnected()).toBe(true);
+
+    await wa.destroy();
   });
 
   it("should throw typed ConnectionError if auto-connect fails during send()", async () => {

@@ -98,10 +98,11 @@ export class MessageService {
     if (!defaultFileName && "path" in options && options.path) {
       defaultFileName = path.basename(options.path);
     }
+    const sanitizedFileName = defaultFileName ? path.basename(defaultFileName) : "document";
 
     return this.transport.sendMediaMessage(jid, "document", payload, {
       caption: options.caption,
-      filename: defaultFileName ?? "document",
+      filename: sanitizedFileName,
       mimetype: options.mimetype,
       quote: options.quote,
     });

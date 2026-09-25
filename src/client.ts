@@ -3,7 +3,7 @@ import { TypedEventEmitter } from "./events/event-emitter.js";
 import { BaileysTransport } from "./transport/baileys-transport.js";
 import { ConnectionManager } from "./connection/connection-manager.js";
 import { MessageService } from "./messages/message-service.js";
-import { SessionStore, validateSessionName } from "./auth/session-store.js";
+import { SessionStore, validateSessionName, assertSafeSessionPath } from "./auth/session-store.js";
 import { DEFAULT_CONFIG } from "./config.js";
 import { ConnectionError } from "./errors/errors.js";
 import { resolveLogger, SilentLogger, type Logger } from "./utils/logger.js";
@@ -55,6 +55,8 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
   private readonly connectionManager: ConnectionManager;
   private readonly messageService: MessageService;
   private connectionPromise: Promise<void> | null = null;
+  private isExplicitConnect = false;
+  private activeSendsCount = 0;
 
   constructor(options: WhatsAppOptions = {}) {
     super();
@@ -66,8 +68,8 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
     const rawSessionName = options.session ?? DEFAULT_CONFIG.DEFAULT_SESSION;
     this.sessionProfileName = validateSessionName(rawSessionName);
 
-    // 3. Resolve physical session directory: ${authRootDir}/${sessionProfileName}
-    const resolvedSessionPath = path.join(this.authRootDir, this.sessionProfileName);
+    // 3. Strictly assert and resolve physical session directory path
+    const resolvedSessionPath = assertSafeSessionPath(this.authRootDir, this.sessionProfileName);
 
     const shouldPrintQR = Boolean(
       options.printQRInTerminal ?? options.printQR ?? DEFAULT_CONFIG.PRINT_QR,
@@ -115,6 +117,12 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
 
     // Register instance in process-level active sessions registry
     const instanceKey = WhatsApp.getInstanceKey(this.authRootDir, this.sessionProfileName);
+    const existing = WhatsApp.activeInstances.get(instanceKey);
+    if (existing && existing !== this) {
+      this.logger.warn(
+        `A WhatsApp client instance for session "${this.sessionProfileName}" is already active in this process. Overwriting active registry entry.`,
+      );
+    }
     WhatsApp.activeInstances.set(instanceKey, this);
   }
 
@@ -147,7 +155,7 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
    * The full absolute path to the directory containing this session's credentials.
    */
   public get sessionPath(): string {
-    return path.resolve(this.authRootDir, this.sessionProfileName);
+    return assertSafeSessionPath(this.authRootDir, this.sessionProfileName);
   }
 
   /**
@@ -277,6 +285,7 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
    * If connecting for the first time, a QR code event will be emitted.
    */
   public async connect(): Promise<void> {
+    this.isExplicitConnect = true;
     await this.ensureConnected();
   }
 
@@ -368,19 +377,25 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
     toOrOptions: string | MessageOptions,
     text?: string,
   ): Promise<SentMessage> {
-    await this.ensureConnected();
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
 
-    let opts: MessageOptions;
-    if (typeof toOrOptions === "string") {
-      opts = { to: toOrOptions, text: text ?? "" };
-    } else {
-      opts = toOrOptions;
+      let opts: MessageOptions;
+      if (typeof toOrOptions === "string") {
+        opts = { to: toOrOptions, text: text ?? "" };
+      } else {
+        opts = toOrOptions;
+      }
+
+      const sent = await this.messageService.sendText(opts);
+      sent.session = this.sessionProfileName;
+      this.emit("message.sent", sent);
+      return sent;
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
     }
-
-    const sent = await this.messageService.sendText(opts);
-    sent.session = this.sessionProfileName;
-    this.emit("message.sent", sent);
-    return sent;
   }
 
   // ============================================================================
@@ -409,25 +424,31 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
     source?: string | Buffer,
     caption?: string,
   ): Promise<SentMessage> {
-    await this.ensureConnected();
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
 
-    let opts: ImageMessageOptions;
-    if (typeof toOrOptions === "string") {
-      if (typeof source === "string") {
-        opts = { to: toOrOptions, path: source, caption };
-      } else if (Buffer.isBuffer(source)) {
-        opts = { to: toOrOptions, data: source, caption };
+      let opts: ImageMessageOptions;
+      if (typeof toOrOptions === "string") {
+        if (typeof source === "string") {
+          opts = { to: toOrOptions, path: source, caption };
+        } else if (Buffer.isBuffer(source)) {
+          opts = { to: toOrOptions, data: source, caption };
+        } else {
+          opts = { to: toOrOptions, path: "" };
+        }
       } else {
-        opts = { to: toOrOptions, path: "" };
+        opts = toOrOptions;
       }
-    } else {
-      opts = toOrOptions;
-    }
 
-    const sent = await this.messageService.sendImage(opts);
-    sent.session = this.sessionProfileName;
-    this.emit("message.sent", sent);
-    return sent;
+      const sent = await this.messageService.sendImage(opts);
+      sent.session = this.sessionProfileName;
+      this.emit("message.sent", sent);
+      return sent;
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
   }
 
   /**
@@ -452,25 +473,31 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
     source?: string | Buffer,
     caption?: string,
   ): Promise<SentMessage> {
-    await this.ensureConnected();
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
 
-    let opts: VideoMessageOptions;
-    if (typeof toOrOptions === "string") {
-      if (typeof source === "string") {
-        opts = { to: toOrOptions, path: source, caption };
-      } else if (Buffer.isBuffer(source)) {
-        opts = { to: toOrOptions, data: source, caption };
+      let opts: VideoMessageOptions;
+      if (typeof toOrOptions === "string") {
+        if (typeof source === "string") {
+          opts = { to: toOrOptions, path: source, caption };
+        } else if (Buffer.isBuffer(source)) {
+          opts = { to: toOrOptions, data: source, caption };
+        } else {
+          opts = { to: toOrOptions, path: "" };
+        }
       } else {
-        opts = { to: toOrOptions, path: "" };
+        opts = toOrOptions;
       }
-    } else {
-      opts = toOrOptions;
-    }
 
-    const sent = await this.messageService.sendVideo(opts);
-    sent.session = this.sessionProfileName;
-    this.emit("message.sent", sent);
-    return sent;
+      const sent = await this.messageService.sendVideo(opts);
+      sent.session = this.sessionProfileName;
+      this.emit("message.sent", sent);
+      return sent;
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
   }
 
   /**
@@ -491,25 +518,31 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
     source?: string | Buffer,
     ptt?: boolean,
   ): Promise<SentMessage> {
-    await this.ensureConnected();
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
 
-    let opts: AudioMessageOptions;
-    if (typeof toOrOptions === "string") {
-      if (typeof source === "string") {
-        opts = { to: toOrOptions, path: source, ptt };
-      } else if (Buffer.isBuffer(source)) {
-        opts = { to: toOrOptions, data: source, ptt };
+      let opts: AudioMessageOptions;
+      if (typeof toOrOptions === "string") {
+        if (typeof source === "string") {
+          opts = { to: toOrOptions, path: source, ptt };
+        } else if (Buffer.isBuffer(source)) {
+          opts = { to: toOrOptions, data: source, ptt };
+        } else {
+          opts = { to: toOrOptions, path: "" };
+        }
       } else {
-        opts = { to: toOrOptions, path: "" };
+        opts = toOrOptions;
       }
-    } else {
-      opts = toOrOptions;
-    }
 
-    const sent = await this.messageService.sendAudio(opts);
-    sent.session = this.sessionProfileName;
-    this.emit("message.sent", sent);
-    return sent;
+      const sent = await this.messageService.sendAudio(opts);
+      sent.session = this.sessionProfileName;
+      this.emit("message.sent", sent);
+      return sent;
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
   }
 
   /**
@@ -537,25 +570,50 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
     filename?: string,
     caption?: string,
   ): Promise<SentMessage> {
-    await this.ensureConnected();
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
 
-    let opts: DocumentMessageOptions;
-    if (typeof toOrOptions === "string") {
-      if (typeof source === "string") {
-        opts = { to: toOrOptions, path: source, filename, caption };
-      } else if (Buffer.isBuffer(source)) {
-        opts = { to: toOrOptions, data: source, filename: filename ?? "document", caption };
+      let opts: DocumentMessageOptions;
+      if (typeof toOrOptions === "string") {
+        if (typeof source === "string") {
+          opts = { to: toOrOptions, path: source, filename, caption };
+        } else if (Buffer.isBuffer(source)) {
+          opts = { to: toOrOptions, data: source, filename: filename ?? "document", caption };
+        } else {
+          opts = { to: toOrOptions, path: "" };
+        }
       } else {
-        opts = { to: toOrOptions, path: "" };
+        opts = toOrOptions;
       }
-    } else {
-      opts = toOrOptions;
+
+      const sent = await this.messageService.sendDocument(opts);
+      sent.session = this.sessionProfileName;
+      this.emit("message.sent", sent);
+      return sent;
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
+  }
+
+  /**
+   * Checks if an implicitly connected one-shot send should gracefully close the connection
+   * so the Node.js event loop can exit naturally without hanging.
+   */
+  private checkAutoDisconnect(): void {
+    if (
+      this.isExplicitConnect ||
+      this.options.keepAlive === true ||
+      this.listenerCount("message") > 0 ||
+      this.activeSendsCount > 0
+    ) {
+      return;
     }
 
-    const sent = await this.messageService.sendDocument(opts);
-    sent.session = this.sessionProfileName;
-    this.emit("message.sent", sent);
-    return sent;
+    void this.disconnect().catch((err) => {
+      this.logger.debug("Auto-disconnect after one-shot send encountered error:", err);
+    });
   }
 
   // ============================================================================
@@ -723,7 +781,7 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
   ): WhatsApp | undefined {
     try {
       const sessionName = validateSessionName(name);
-      const instanceKey = WhatsApp.getInstanceKey(authDir, sessionName);
+      const instanceKey = WhatsApp.getInstanceKey(path.resolve(authDir), sessionName);
       return WhatsApp.activeInstances.get(instanceKey);
     } catch {
       return undefined;

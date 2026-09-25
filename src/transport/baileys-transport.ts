@@ -376,7 +376,8 @@ export class BaileysTransport
 
   private normalizeIncomingMessage(wam: WAMessage): IncomingMessage {
     const key = wam.key;
-    const remoteJid = key.remoteJid || "";
+    const remoteJid =
+      key.remoteJid || (key as unknown as { remoteJidAlt?: string }).remoteJidAlt || "";
     const isGroup = remoteJid.endsWith("@g.us");
     const isFromMe = Boolean(key.fromMe);
 
@@ -401,6 +402,12 @@ export class BaileysTransport
       session: this.sessionName,
       raw: wam,
       reply: async (textOrOptions: string | Omit<MessageOptions, "to">): Promise<SentMessage> => {
+        if (!remoteJid) {
+          throw new MessageError(
+            "Cannot reply: recipient JID is missing in the incoming message",
+            "ERR_MISSING_REPLY_TARGET",
+          );
+        }
         if (typeof textOrOptions === "string") {
           return this.sendTextMessage(remoteJid, textOrOptions, { quote: wam });
         }

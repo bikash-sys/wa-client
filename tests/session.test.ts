@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { WhatsApp } from "../src/client.js";
-import { SessionStore, validateSessionName } from "../src/auth/session-store.js";
+import {
+  SessionStore,
+  validateSessionName,
+  assertSafeSessionPath,
+} from "../src/auth/session-store.js";
 import { SessionError } from "../src/errors/errors.js";
 import { SilentLogger } from "../src/utils/logger.js";
 import { TypedEventEmitter } from "../src/events/event-emitter.js";
@@ -357,5 +361,58 @@ describe("Named Sessions & Session Management API", () => {
     expect(readySpy).toHaveBeenCalledTimes(1);
     expect(transport.connect).toHaveBeenCalledTimes(1);
     expect(result.id).toBe("sent-1");
+  });
+
+  it("should assertSafeSessionPath correctly and prevent escaping the auth root", () => {
+    const safePath = assertSafeSessionPath("./auth", "valid-session");
+    expect(safePath).toBe(path.resolve("./auth/valid-session"));
+
+    expect(() => assertSafeSessionPath("./auth", "../escaped")).toThrow(SessionError);
+    expect(() => assertSafeSessionPath("./auth", "/root/escaped")).toThrow(SessionError);
+    expect(() => assertSafeSessionPath("./auth", "..")).toThrow(SessionError);
+  });
+
+  it("should return existing instance when createSession is called multiple times for same session", async () => {
+    const client1 = await WhatsApp.createSession("duplicate-check", {
+      authDir: TEST_BASE_DIR,
+      logger: false,
+    });
+    const client2 = await WhatsApp.createSession("duplicate-check", {
+      authDir: TEST_BASE_DIR,
+      logger: false,
+    });
+
+    expect(client1).toBe(client2);
+  });
+
+  it("should disconnect and destroy all sessions with disconnectAll()", async () => {
+    const transport1 = new MockTransport();
+    const transport2 = new MockTransport();
+
+    const client1 = new WhatsApp({
+      session: "s1",
+      authDir: TEST_BASE_DIR,
+      transport: transport1,
+      logger: false,
+    });
+    const client2 = new WhatsApp({
+      session: "s2",
+      authDir: TEST_BASE_DIR,
+      transport: transport2,
+      logger: false,
+    });
+
+    await client1.connect();
+    await client2.connect();
+
+    expect(client1.isConnected()).toBe(true);
+    expect(client2.isConnected()).toBe(true);
+
+    await WhatsApp.disconnectAll();
+
+    expect(transport1.destroy).toHaveBeenCalled();
+    expect(transport2.destroy).toHaveBeenCalled();
+    expect(WhatsApp.getSession("s1", TEST_BASE_DIR)).toBeUndefined();
+    expect(WhatsApp.getSession("s2", TEST_BASE_DIR)).toBeUndefined();
   });
 });
