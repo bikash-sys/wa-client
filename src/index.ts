@@ -21,7 +21,7 @@ export {
 } from "./errors/errors.js";
 
 // Session & Storage
-export { SessionStore } from "./auth/session-store.js";
+export { SessionStore, validateSessionName } from "./auth/session-store.js";
 
 // Transport Layer
 export { BaileysTransport } from "./transport/baileys-transport.js";
@@ -53,6 +53,7 @@ export type { Logger, LogLevel } from "./utils/logger.js";
 // Public Type Definitions
 export type {
   WhatsAppOptions,
+  SessionInfo,
   ConnectionState,
   SentMessage,
   MessageOptions,

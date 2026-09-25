@@ -1,5 +1,5 @@
 {
-  "name": "wp-client",
+  "name": "whatsapp-msg-client",
   "version": "0.1.0",
   "description": "Simple WhatsApp Web client for Node.js with QR authentication, persistent sessions, messaging, media, and event handling.",
   "keywords": [
@@ -11,18 +11,18 @@
     "bot",
     "qr-code",
     "client",
-    "wp-client"
+    "whatsapp-msg-client"
   ],
   "license": "MIT",
   "author": "",
   "repository": {
     "type": "git",
-    "url": "https://github.com/placeholder/wp-client.git"
+    "url": "https://github.com/placeholder/whatsapp-msg-client.git"
   },
   "bugs": {
-    "url": "https://github.com/placeholder/wp-client/issues"
+    "url": "https://github.com/placeholder/whatsapp-msg-client/issues"
   },
-  "homepage": "https://github.com/placeholder/wp-client#readme",
+  "homepage": "https://github.com/placeholder/whatsapp-msg-client#readme",
   "engines": {
     "node": ">=18.0.0"
   },

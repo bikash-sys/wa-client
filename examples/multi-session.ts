@@ -10,21 +10,23 @@ import { WhatsApp } from "../src/index.js";
 
 async function main() {
   const personal = new WhatsApp({
-    session: "./sessions/personal",
-    printQR: true,
+    session: "personal",
+    printQRInTerminal: true,
   });
 
   const business = new WhatsApp({
-    session: "./sessions/business",
-    printQR: true,
+    session: "business",
+    printQRInTerminal: true,
   });
 
-  personal.on("ready", () => {
+  personal.on("ready", async () => {
     console.log("✓ Personal WhatsApp account connected!");
+    await personal.send("919876543210", "Message from personal account");
   });
 
-  business.on("ready", () => {
+  business.on("ready", async () => {
     console.log("✓ Business WhatsApp account connected!");
+    await business.send("919876543210", "Message from business account");
   });
 
   console.log("Connecting both sessions concurrently...");

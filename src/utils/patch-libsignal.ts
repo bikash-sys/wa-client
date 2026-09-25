@@ -18,8 +18,8 @@
  */
 
 // ─── Console interceptor (defence in depth) ────────────────────────────────
-// Intercept console.info and console.warn to strip full SessionEntry objects
-// that libsignal may print via code paths we haven't prototype-patched.
+// Intercept console.info and console.warn to suppress sensitive SessionEntry objects
+// that libsignal may print via internal code paths.
 const SENSITIVE_SESSION_PREFIXES = [
   "Closing session:",
   "Opening session:",
@@ -37,8 +37,7 @@ console.info = function safeConsoleInfo(...args: unknown[]): void {
   if (typeof args[0] === "string") {
     for (const prefix of SENSITIVE_SESSION_PREFIXES) {
       if (args[0].startsWith(prefix)) {
-        // Emit the prefix only — no session object
-        _origConsoleInfo(prefix.replace(":", "...").replace(":", " (redacted)"));
+        // Suppress libsignal session dump from polluting stdout
         return;
       }
     }
@@ -50,7 +49,7 @@ console.warn = function safeConsoleWarn(...args: unknown[]): void {
   if (typeof args[0] === "string") {
     for (const prefix of SENSITIVE_SESSION_PREFIXES) {
       if (args[0].startsWith(prefix)) {
-        _origConsoleWarn(prefix.replace(":", "...").replace(":", " (redacted)"));
+        // Suppress libsignal session dump from polluting stdout
         return;
       }
     }
@@ -59,8 +58,8 @@ console.warn = function safeConsoleWarn(...args: unknown[]): void {
 };
 
 // ─── Prototype patch ────────────────────────────────────────────────────────
-// Directly override the SessionRecord methods that dump sessions so even
-// the prefix text is controlled by us, not by libsignal.
+// Directly override the SessionRecord methods that dump sessions to prevent
+// console pollution and ensure sensitive state is never logged.
 function applyPrototypePatch(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -80,7 +79,6 @@ function applyPrototypePatch(): void {
         session: { indexInfo: { closed: number } },
       ) {
         if (session?.indexInfo?.closed !== -1) return; // already closed — no-op
-        _origConsoleInfo("Closing session...");
         session.indexInfo.closed = Date.now();
       };
     }
@@ -92,7 +90,6 @@ function applyPrototypePatch(): void {
         session: { indexInfo: { closed: number } },
       ) {
         if (session?.indexInfo?.closed === -1) return; // already open — no-op
-        _origConsoleInfo("Opening session...");
         session.indexInfo.closed = -1;
       };
     }
@@ -101,8 +98,6 @@ function applyPrototypePatch(): void {
     if (typeof proto["removeOldSessions"] === "function") {
       const origRemove = proto["removeOldSessions"] as (this: unknown) => void;
       proto["removeOldSessions"] = function patchedRemoveOldSessions(this: unknown) {
-        // The console.info interceptor above already handles the prefix match,
-        // but we also wrap to prevent the raw object being passed at all.
         origRemove.call(this);
       };
     }
@@ -123,7 +118,7 @@ applyPrototypePatch();
  *
  * @example
  * ```typescript
- * import { patchLibsignalLogs } from "wp-client";
+ * import { patchLibsignalLogs } from "whatsapp-msg-client";
  * patchLibsignalLogs(); // apply before calling makeWASocket
  * ```
  */

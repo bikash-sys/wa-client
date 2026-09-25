@@ -1,8 +1,10 @@
 /**
- * Default configuration constants for wp-client.
+ * Default configuration constants for whatsapp-msg-client.
  */
 export const DEFAULT_CONFIG = {
-  SESSION_DIR: "./session",
+  AUTH_DIR: "./auth",
+  DEFAULT_SESSION: "default",
+  SESSION_DIR: "./auth/default",
   PRINT_QR: false,
   RECONNECT: true,
   MAX_RECONNECT_ATTEMPTS: 5,

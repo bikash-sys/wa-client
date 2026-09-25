@@ -12,13 +12,14 @@ export type ConnectionState =
  */
 export interface WhatsAppOptions {
   /**
-   * Path to the session directory where authentication credentials will be stored.
-   * If not provided, defaults to `./session`.
+   * Named session identifier (e.g. "personal", "business", "bot").
+   * Defaults to "default".
    */
   session?: string;
 
   /**
-   * Alias for `session`. Path to the session/authentication directory.
+   * Root directory where named session authentication folders will be stored.
+   * Defaults to `./auth`.
    */
   authDir?: string;
 
@@ -64,6 +65,24 @@ export interface WhatsAppOptions {
 }
 
 /**
+ * Information about a named session profile.
+ */
+export interface SessionInfo {
+  /** Name of the session profile */
+  name: string;
+  /** Whether the session currently has an active connection */
+  connected: boolean;
+  /** Current connection lifecycle state */
+  state: ConnectionState;
+  /** Root authentication directory where this session is stored */
+  authDir: string;
+  /** Absolute path to the session directory */
+  sessionPath: string;
+  /** Whether saved credentials exist on disk for this session */
+  hasCredentials: boolean;
+}
+
+/**
  * Result returned after successfully sending a message.
  */
 export interface SentMessage {
@@ -75,6 +94,8 @@ export interface SentMessage {
   timestamp: number;
   /** Optional raw underlying message object */
   raw?: unknown;
+  /** Session profile name that sent this message */
+  session?: string;
 }
 
 /**
@@ -221,6 +242,8 @@ export interface IncomingMessage {
   isFromMe: boolean;
   /** Optional raw underlying transport message object */
   raw?: unknown;
+  /** Session profile name that received this message */
+  session?: string;
   /**
    * Convenient helper to reply directly to this message.
    * Automatically quotes the incoming message and addresses the reply to the sender/group.
@@ -250,4 +273,6 @@ export type WhatsAppEvents = {
   error: (error: Error) => void;
   /** Emitted when the session is logged out remotely or locally */
   logged_out: () => void;
+  /** Emitted when a session is removed and cleaned up */
+  "session.removed": (sessionName: string) => void;
 };

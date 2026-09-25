@@ -1,8 +1,8 @@
-# wp-client
+# whatsapp-msg-client
 
-> Simple, developer-friendly WhatsApp Web client for Node.js with QR authentication, persistent sessions, messaging, media attachments, and event handling. Built to feel as intuitive as Nodemailer.
+> Simple, developer-friendly WhatsApp Web client for Node.js with QR authentication, named persistent sessions, messaging, media attachments, and event handling. Built to feel as intuitive as Nodemailer.
 
-[![npm version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://www.npmjs.com/package/wp-client)
+[![npm version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org)
 
@@ -10,26 +10,31 @@
 
 ## Important Notice
 
-**wp-client is an unofficial WhatsApp Web client wrapper.**
+**whatsapp-msg-client is an unofficial WhatsApp Web client wrapper.**
 It is **not** an official Meta or WhatsApp API, SDK, or product, and is **not affiliated with, maintained, authorized, or endorsed by Meta Platforms, Inc. or WhatsApp LLC**.
 
 This library is designed for legitimate automation, personal notifications, server alerts, internal tools, and customer assistance bots. It does **not** provide tools for spamming, bulk blasts, scraping, contact harvesting, or bypassing WhatsApp restrictions. Always adhere to WhatsApp's Terms of Service and applicable privacy regulations.
 
 ---
 
+## How It Works
+
+Each WhatsApp account is stored as a named session. Scan the QR code once, give the session a name such as `personal` or `business`, and the credentials are saved locally. Future runs automatically reconnect to that WhatsApp account without requiring another QR scan.
+
+---
+
 ## Features
 
-- 🚀 **Nodemailer-like Simplicity**: Clean, promise-based async API with zero unnecessary boilerplate.
-- 📱 **QR Authentication**: Simple QR code event emission with optional automatic terminal QR rendering.
-- 💾 **Persistent Sessions**: Credentials saved securely to disk; subsequent launches connect instantly without rescanning.
-- 🛡️ **Session Auto-Recovery**: Detects corrupted or empty session credentials and gracefully resets without crashing.
-- 💬 **Messaging**: Send text messages via simple `(to, text)` syntax or structured options objects.
-- 📎 **Media Attachments**: First-class support for sending images, videos, audio/voice notes, and documents (PDFs, spreadsheets) via file paths or in-memory `Buffer`s.
-- ↩️ **Native Replies**: Convenient `message.reply("...")` helper on incoming messages with automatic quoting.
+- 🚀 **Nodemailer-like Simplicity**: Clean, promise-based `wa.send()` API.
+- 📱 **QR Authentication**: Simple QR code event emission with automatic terminal QR code rendering (`printQRInTerminal: true`).
+- 💾 **Named Persistent Sessions**: Each account is stored separately in `./auth/<session>/` (e.g. `./auth/personal/`, `./auth/business/`).
+- 👥 **Multiple Accounts in One Process**: Run multiple WhatsApp accounts simultaneously without credential crosstalk.
+- 🗂️ **Session Management API**: Create, list, inspect, and remove sessions both statically and via instance methods.
+- 💬 **Simple Messaging**: `wa.send("919876543210", "Hello!")` and `wa.sendMessage()` backwards compatibility.
+- 📎 **Media Attachments**: Send images, videos, audio/voice notes, and documents (PDFs, spreadsheets) via file paths or in-memory `Buffer`s.
+- ↩️ **Native Replies**: Convenient `message.reply("...")` helper with automatic quoting.
 - 🔄 **Smart Reconnection**: Built-in exponential backoff with jitter and customizable retry limits.
-- 👥 **Multi-Session Support**: Run multiple distinct WhatsApp accounts in a single Node.js process without credential crosstalk.
-- 🔒 **Security First**: Automatic sanitization of logs preventing credential/private key leaks, restrictive file permissions (0700).
-- 🧩 **Modular Transport**: Abstracted transport layer (`WhatsAppTransport`) allowing complete mocking in unit tests.
+- 🔒 **Security First**: Automatic sanitization of logs preventing credential/private key leaks, restrictive file permissions (`0700`), and path traversal protection.
 - 🔷 **Strict TypeScript**: 100% TypeScript with full type definitions (`.d.ts` and `.d.cts`) and comprehensive TSDoc comments.
 
 ---
@@ -37,188 +42,234 @@ This library is designed for legitimate automation, personal notifications, serv
 ## Installation
 
 ```bash
-npm install wp-client
+npm install whatsapp-msg-client
 ```
 
 *(Requires Node.js 18.0.0 or higher)*
 
 ---
 
-## Quick Start
+## Basic Usage
 
 ```typescript
-import { WhatsApp } from "wp-client";
+import { WhatsApp } from "whatsapp-msg-client";
 
 const wa = new WhatsApp({
-  session: "./session",
-  printQR: true, // Automatically prints QR to terminal
+  session: "personal",
+  printQRInTerminal: true, // Automatically prints the QR code in your terminal
 });
 
-wa.on("qr", (qr) => {
-  console.log("Raw QR string:", qr);
-});
+wa.on("message", async (msg) => {
+  console.log(`Received message from ${msg.from}: ${msg.text}`);
 
-wa.on("ready", async () => {
-  console.log("WhatsApp connected and ready!");
-
-  // Send a text message (always include country code!)
-  const sent = await wa.sendMessage("919876543210", "Hello from Node.js!");
-  console.log("Message delivered:", sent.id);
-});
-
-wa.on("error", (err) => {
-  console.error("WhatsApp error:", err);
+  if (msg.text === "hi") {
+    await msg.reply("Hello!");
+  }
 });
 
 await wa.connect();
+
+// Send a message (always include country code!)
+await wa.send("919340748552", "Hello from my personal WhatsApp!");
 ```
 
 ---
 
-## QR Authentication
+## Sessions
 
-On initial connection, WhatsApp requires device pairing via a QR code.
+Each session represents an independent WhatsApp profile stored on disk under `./auth/<session-name>/`.
 
-### Terminal Display
-Enable `printQR: true` in options to render the QR code directly into your terminal:
+### Default Session
+If no session name is provided, `whatsapp-msg-client` defaults to `"default"` and stores credentials in `./auth/default/`:
+
+```typescript
+const wa = new WhatsApp(); // Uses ./auth/default/
+```
+
+### Named Sessions
+Give your session a name to organize profiles:
+
+```typescript
+const personal = new WhatsApp({ session: "personal" }); // ./auth/personal/
+const business = new WhatsApp({ session: "business" }); // ./auth/business/
+```
+
+### Custom Auth Root Directory
+You can customize the parent directory where session folders are placed:
 
 ```typescript
 const wa = new WhatsApp({
-  session: "./session",
-  printQR: true,
+  authDir: "./my-whatsapp-auth",
+  session: "business",
 });
+// Credentials stored in ./my-whatsapp-auth/business/
 ```
 
-The terminal will display:
-```text
-Scan this QR code with WhatsApp:
------------------------------------------
-Scan this QR code using:
-WhatsApp → Linked Devices → Link a Device
+> **Security Note**: Session names are strictly validated to prevent filesystem traversal (e.g. `../` or absolute paths are rejected).
 
-[QR CODE]
------------------------------------------
-```
+---
 
-### Custom UI / WebSockets
-Listen to the `"qr"` event to receive the raw QR string and render it in your custom web dashboard, React frontend, or WebSocket feed:
+## Multiple WhatsApp Accounts
+
+Multiple sessions can run at the same time in a single Node.js application:
 
 ```typescript
-wa.on("qr", (qrString) => {
-  // Example: broadcast via WebSocket to your frontend dashboard
-  websocketServer.broadcast(JSON.stringify({ type: "QR_CODE", qr: qrString }));
+import { WhatsApp } from "whatsapp-msg-client";
+
+const personal = new WhatsApp({
+  session: "personal",
+  printQRInTerminal: true,
 });
+
+const business = new WhatsApp({
+  session: "business",
+  printQRInTerminal: true,
+});
+
+await personal.connect();
+await business.connect();
+
+await personal.send("919340748552", "Hello from personal!");
+await business.send("919340748552", "Hello from business!");
+```
+
+Messages are strictly sent from the WhatsApp account associated with that specific session instance.
+
+---
+
+## Session Management
+
+`whatsapp-msg-client` includes built-in APIs to create, list, check, and delete sessions.
+
+### Listing Sessions
+Inspect all sessions saved on disk or active in memory:
+
+```typescript
+const sessions = await WhatsApp.listSessions();
+console.log(sessions);
+```
+
+Returns clean, safe information without exposing sensitive credentials or keys:
+
+```json
+[
+  {
+    "name": "business",
+    "connected": true,
+    "state": "connected",
+    "authDir": "/path/to/project/auth",
+    "sessionPath": "/path/to/project/auth/business",
+    "hasCredentials": true
+  },
+  {
+    "name": "personal",
+    "connected": false,
+    "state": "disconnected",
+    "authDir": "/path/to/project/auth",
+    "sessionPath": "/path/to/project/auth/personal",
+    "hasCredentials": true
+  }
+]
+```
+
+### Checking If a Session Exists
+```typescript
+if (WhatsApp.hasSession("business")) {
+  console.log("Business session exists on disk or in memory");
+}
+```
+
+### Creating Sessions
+```typescript
+const client = await WhatsApp.createSession("customer-support", {
+  printQRInTerminal: true,
+});
+await client.connect();
+```
+
+### Removing Sessions
+When you remove a session:
+1. The active connection is disconnected gracefully.
+2. Reconnection timers are cancelled.
+3. The session is removed from memory.
+4. The authentication directory (`./auth/<name>/`) is deleted from disk.
+5. Other sessions remain completely untouched.
+
+```typescript
+// Static removal
+await WhatsApp.removeSession("business");
+
+// Or from an instance
+await wa.removeSession();
 ```
 
 ---
 
-## Persistent Sessions
+## Persistent Authentication
 
-After scanning the QR code, authentication credentials (pre-keys, signed keys, credentials) are persisted to the specified `session` folder.
-
-```typescript
-const wa = new WhatsApp({
-  session: "./session", // Directory for credentials
-});
-```
-
-- **First Launch**: Emits `"qr"` and waits for pairing.
-- **Subsequent Launches**: Reuses saved credentials and connects immediately without emitting `"qr"`.
-- **Corrupted Sessions**: If session files become corrupt or unreadable, `wp-client` detects this and clears the corrupted state gracefully rather than throwing uncaught JSON syntax errors.
-
-### Multi-Account Sessions
-Manage separate WhatsApp accounts simultaneously by pointing to different session directories:
-
-```typescript
-const personal = new WhatsApp({ session: "./sessions/personal" });
-const support = new WhatsApp({ session: "./sessions/support" });
-
-await Promise.all([
-  personal.connect(),
-  support.connect(),
-]);
-```
+- **First Launch**: Shows a QR code in the terminal (or emits the `"qr"` event).
+- **Subsequent Launches**: Reconnects instantly using stored credentials in `./auth/<name>/` without showing a QR code.
+- **Corrupted Sessions**: If session files are damaged or corrupted, `whatsapp-msg-client` automatically resets the corrupted state gracefully rather than crashing.
 
 ---
 
 ## Sending Messages
 
-### Text Message Overloads
-You can use the simple signature `sendMessage(to, text)` or the options object signature:
+### Text Messages
+Use the primary `send()` method (or its backwards-compatible alias `sendMessage()`):
 
 ```typescript
-// 1. Shorthand syntax
-await wa.sendMessage("919876543210", "Hello!");
+// 1. Shorthand: (recipient, text)
+await wa.send("919876543210", "Hello there!");
 
 // 2. Options object syntax
-await wa.sendMessage({
+await wa.send({
   to: "+91 98765-43210", // Automatically normalized
   text: "Hello from options object!",
 });
 ```
 
-The returned `SentMessage` object contains:
-```typescript
-{
-  id: "3EB0ABC123DEF456",
-  to: "919876543210",
-  timestamp: 1711364400000
-}
-```
-
-### Phone Number Validation & Formatting
-- Always include the international country code (e.g. `91` for India, `1` for US/Canada, `44` for UK).
-- Formatting characters like `+`, spaces, dashes, dots, and parentheses are stripped automatically:
-  - `"+91 98765-43210"` ➔ normalized to `"919876543210"`
-- Numbers with fewer than 7 digits or more than 15 digits (per E.164) are rejected with `InvalidPhoneNumberError`.
-- Country codes are **never** guessed automatically.
-
----
-
-## Sending Images
-
-Send JPEG, PNG, or WebP images using either a local file path or an in-memory `Buffer`:
+### Images
+Send images from local files or in-memory `Buffer`s:
 
 ```typescript
-// From a file path with optional caption
-await wa.sendImage({
-  to: "919876543210",
-  path: "./assets/chart.png",
-  caption: "Weekly server uptime report 📊",
-});
+// Local file path
+await wa.sendImage("919876543210", "./assets/photo.jpg", "Check this photo!");
 
-// From an in-memory Buffer
-import fs from "node:fs";
-const imageBuffer = fs.readFileSync("./assets/avatar.jpg");
-
+// In-memory Buffer
 await wa.sendImage({
   to: "919876543210",
   data: imageBuffer,
-  caption: "User profile picture",
+  caption: "Profile picture",
 });
 ```
 
----
-
-## Sending Documents
-
-Send PDFs, spreadsheets, Word documents, zip files, or text files:
-
+### Videos
 ```typescript
-// From a local file path
-await wa.sendDocument({
-  to: "919876543210",
-  path: "./reports/invoice-1042.pdf",
-  caption: "Your latest invoice",
-});
+await wa.sendVideo("919876543210", "./assets/video.mp4", "Watch this clip");
+```
 
-// From dynamically generated Buffer (e.g., pdfkit / exceljs)
+### Audio / Voice Notes
+```typescript
+// Standard audio
+await wa.sendAudio("919876543210", "./assets/song.mp3");
+
+// Recorded voice note (Push-To-Talk)
+await wa.sendAudio("919876543210", "./assets/voice.mp3", true);
+```
+
+### Documents (PDF, Excel, Zip, etc.)
+```typescript
+// Local file path
+await wa.sendDocument("919876543210", "./reports/invoice.pdf", "Invoice #1042");
+
+// In-memory Buffer
 await wa.sendDocument({
   to: "919876543210",
-  data: generatedPdfBuffer,
-  filename: "invoice-1042.pdf",
+  data: pdfBuffer,
+  filename: "invoice.pdf",
   mimetype: "application/pdf",
-  caption: "Here is your invoice",
+  caption: "Your invoice is attached",
 });
 ```
 
@@ -226,34 +277,20 @@ await wa.sendDocument({
 
 ## Receiving Messages
 
-Listen to the `"message"` event to process incoming messages:
+Listen to the `"message"` event:
 
 ```typescript
 wa.on("message", async (msg) => {
-  console.log(`From: ${msg.from}`);       // Sender phone number or group JID
-  console.log(`Author: ${msg.sender}`);   // Participant phone number in groups
-  console.log(`Text: ${msg.text}`);       // Extracted text content
+  console.log(`Session: ${msg.session}`);   // e.g. "personal"
+  console.log(`From: ${msg.from}`);         // Phone number or group JID
+  console.log(`Author: ${msg.sender}`);     // Individual participant in groups
+  console.log(`Text: ${msg.text}`);         // Message text content
   console.log(`Is Group: ${msg.isGroup}`);
   console.log(`Is From Me: ${msg.isFromMe}`);
-});
-```
 
----
-
-## Replying
-
-Every `IncomingMessage` includes a built-in `.reply()` method that automatically quotes the original message in the chat:
-
-```typescript
-wa.on("message", async (msg) => {
-  if (msg.isFromMe) return; // Ignore own messages
-
-  if (msg.text?.toLowerCase() === "ping") {
+  // Built-in reply helper with automatic quoting
+  if (msg.text === "ping") {
     await msg.reply("pong 🏓");
-  } else if (msg.text?.toLowerCase() === "help") {
-    await msg.reply({
-      text: "Commands available:\n- ping\n- status\n- support",
-    });
   }
 });
 ```
@@ -262,8 +299,6 @@ wa.on("message", async (msg) => {
 
 ## Events
 
-`WhatsApp` extends `TypedEventEmitter` with strict TypeScript typing:
-
 | Event | Arguments | Description |
 |---|---|---|
 | `qr` | `(qr: string)` | Emitted when a new QR code is ready for scanning. |
@@ -271,45 +306,31 @@ wa.on("message", async (msg) => {
 | `ready` | `()` | Emitted when authenticated and fully ready to send/receive messages. |
 | `disconnected` | `(reason?: string)` | Emitted when disconnected from WhatsApp. |
 | `reconnecting` | `(attempt: number, maxAttempts: number)` | Emitted when an automatic reconnect attempt is triggered. |
-| `message` | `(message: IncomingMessage)` | Emitted when an incoming message is received. |
-| `message.sent` | `(message: SentMessage)` | Emitted after a message is sent successfully. |
+| `message` | `(message: IncomingMessage)` | Emitted when an incoming message is received (includes `.session`). |
+| `message.sent` | `(message: SentMessage)` | Emitted after a message is sent successfully (includes `.session`). |
 | `error` | `(error: Error)` | Emitted when a connection or protocol error occurs. |
-| `logged_out` | `()` | Emitted when the session is logged out (remotely from phone or locally). |
+| `logged_out` | `()` | Emitted when the session is logged out. |
+| `session.removed` | `(sessionName: string)` | Emitted when a session is removed. |
 
 ---
 
-## Reconnection
-
-`wp-client` features intelligent reconnection management:
-- **Automatic Exponential Backoff**: Retries with increasing delay (`2s`, `4s`, `8s`, `16s`, `30s`) with randomized jitter to prevent thundering herd problems.
-- **Configurable Limits**: Set `maxReconnectAttempts` (default: 5) to control retry limits.
-- **Disable Auto-Reconnect**: Pass `reconnect: false` if your application manages its own lifecycle.
-- **Safe Stop**: Reconnection is permanently halted upon explicit `.disconnect()`, `.destroy()`, or `.logout()`.
-
-```typescript
-const wa = new WhatsApp({
-  session: "./session",
-  reconnect: true,
-  maxReconnectAttempts: 10,
-  reconnectIntervalMs: 3000,
-});
-```
-
----
-
-## Configuration
-
-All constructor options:
+## Configuration Options
 
 ```typescript
 interface WhatsAppOptions {
-  /** Directory path to persist session credentials. Defaults to "./session" */
+  /** Named session profile (e.g. "personal", "business"). Defaults to "default" */
   session?: string;
+
+  /** Root directory for session credential storage. Defaults to "./auth" */
+  authDir?: string;
 
   /** Render QR code in terminal automatically. Defaults to false */
   printQR?: boolean;
 
-  /** Custom Logger, LogLevel ("debug" | "info" | "warn" | "error" | "silent"), or false. Defaults to silent */
+  /** Alias for printQR */
+  printQRInTerminal?: boolean;
+
+  /** Custom Logger, LogLevel, or false. Defaults to silent */
   logger?: Logger | LogLevel | boolean;
 
   /** Enable automatic reconnection. Defaults to true */
@@ -321,59 +342,8 @@ interface WhatsAppOptions {
   /** Base interval between reconnect attempts in milliseconds. Defaults to 2000 */
   reconnectIntervalMs?: number;
 
-  /** Custom transport implementation for testing / alternative engines */
+  /** Custom transport implementation for testing / mocking */
   transport?: WhatsAppTransport;
-}
-```
-
----
-
-## TypeScript
-
-`wp-client` is written in TypeScript and exports all public interfaces:
-
-```typescript
-import type {
-  WhatsAppOptions,
-  ConnectionState,
-  SentMessage,
-  MessageOptions,
-  ImageMessageOptions,
-  VideoMessageOptions,
-  AudioMessageOptions,
-  DocumentMessageOptions,
-  IncomingMessage,
-  WhatsAppEvents,
-  Logger,
-} from "wp-client";
-```
-
----
-
-## Error Handling
-
-All library errors derive from `WhatsAppError` and include machine-readable error codes:
-
-```typescript
-import {
-  WhatsApp,
-  WhatsAppError,
-  ConnectionError,
-  InvalidPhoneNumberError,
-  MessageError,
-  SessionError,
-} from "wp-client";
-
-try {
-  await wa.sendMessage("bad-number", "Test");
-} catch (err) {
-  if (err instanceof InvalidPhoneNumberError) {
-    console.error("Invalid phone number:", err.message, err.code);
-  } else if (err instanceof MessageError) {
-    console.error("Failed to deliver message:", err.message);
-  } else if (err instanceof WhatsAppError) {
-    console.error("General WhatsApp error:", err.code);
-  }
 }
 ```
 
@@ -382,60 +352,35 @@ try {
 ## Security
 
 Session credentials grant full access to send and receive messages on your WhatsApp account.
-- **Git Ignore**: Always add `session/` and `sessions/` to your `.gitignore`.
-- **Restrict File Permissions**: On Linux / macOS, ensure permissions are set to owner-only:
-  ```bash
-  chmod 700 ./session
-  ```
+- **Git Ignore**: Always add `auth/` to your `.gitignore`.
+- **Restrict File Permissions**: Sessions are created with owner-only access (`0700`).
 - **Redacted Logging**: Sensitive credentials, pre-keys, and private keys are never included in logs or error messages.
-- **Revocation**: If a server is compromised, disconnect the device immediately from your phone under **Settings → Linked Devices**.
+- **Revocation**: If a device is lost or compromised, unlink the session immediately from your phone under **WhatsApp → Settings → Linked Devices**.
 
 ---
 
-## Responsible Use
-
-- **No Spam**: Do not use this library to broadcast bulk unsolicited messages. WhatsApp actively bans accounts suspected of automated spam.
-- **Rate Limiting**: Space out messages sent from automation pipelines.
-- **Opt-In Only**: Only send messages to recipients who have explicitly consented to receive communications.
-- **Compliance**: You are solely responsible for complying with local regulations (such as GDPR, TCPA) and WhatsApp's Terms of Service.
-
----
-
-## Limitations
-
-- **Unofficial Protocol**: WhatsApp Web protocols are proprietary and subject to unannounced updates by WhatsApp.
-- **One Primary Phone**: As an unofficial WhatsApp Web companion client, an active WhatsApp account on a primary mobile device is required for QR authentication.
-- **Status & Communities**: Focus is on direct messaging, media, and 1-on-1 / group communication. Complex community administration is outside current scope.
-
----
-
-## Development
+## Development & Verification
 
 ```bash
-# Install dependencies
-npm install
-
-# Run unit tests (Vitest)
+# Run tests
 npm test
 
 # Check TypeScript types
 npm run typecheck
 
-# Run linter
+# Lint codebase
 npm run lint
 
-# Format code with Prettier
+# Format with Prettier
 npm run format
 
-# Build bundle (ESM + CommonJS + .d.ts)
+# Build distribution bundle
 npm run build
-
-# Run manual interactive live test (scans QR and sends 1 message)
-npm run test:integration
 ```
 
 ---
 
 ## License
 
-[MIT](LICENSE) © 2026 wp-client Contributors
+[MIT](LICENSE) © 2026 whatsapp-msg-client Contributors
+

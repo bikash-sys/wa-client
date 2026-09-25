@@ -8,8 +8,8 @@ import { WhatsApp } from "../src/index.js";
 
 async function main() {
   const wa = new WhatsApp({
-    session: "./session",
-    printQR: true, // Automatically prints the QR code in the terminal
+    session: "personal",
+    printQRInTerminal: true, // Automatically prints the QR code in the terminal
   });
 
   wa.on("qr", (qr) => {
@@ -28,7 +28,7 @@ async function main() {
     console.log(`Sending message to ${targetNumber}...`);
 
     try {
-      const result = await wa.sendMessage(targetNumber, "Hello from wp-client! 🚀");
+      const result = await wa.send(targetNumber, "Hello from whatsapp-msg-client! 🚀");
       console.log("✓ Message sent successfully:", result);
     } catch (err) {
       console.error("Failed to send message:", err);

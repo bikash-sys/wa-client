@@ -52,6 +52,7 @@ export class BaileysTransport
 {
   private socket: WASocket | null = null;
   private sessionStore: SessionStore;
+  private sessionName: string;
   private logger: Logger;
   private printQR: boolean;
   private qrCount = 0;
@@ -61,6 +62,7 @@ export class BaileysTransport
 
   constructor(options: {
     sessionPath: string;
+    sessionName?: string;
     logger: Logger;
     printQR?: boolean;
     printQRInTerminal?: boolean;
@@ -68,6 +70,7 @@ export class BaileysTransport
     super();
     // Suppress sensitive cryptographic session state logged by libsignal internals
     patchLibsignalLogs();
+    this.sessionName = options.sessionName ?? "default";
     this.logger = options.logger;
     this.printQR = Boolean(options.printQRInTerminal ?? options.printQR ?? false);
     this.sessionStore = new SessionStore(options.sessionPath, this.logger);
@@ -277,6 +280,7 @@ export class BaileysTransport
         id: sent.key.id || "",
         to: jidToPhoneNumber(toJid),
         timestamp,
+        session: this.sessionName,
         raw: sent,
       };
     } catch (err) {
@@ -357,6 +361,7 @@ export class BaileysTransport
         id: sent.key.id || "",
         to: jidToPhoneNumber(toJid),
         timestamp,
+        session: this.sessionName,
         raw: sent,
       };
     } catch (err) {
@@ -393,6 +398,7 @@ export class BaileysTransport
       timestamp,
       isGroup,
       isFromMe,
+      session: this.sessionName,
       raw: wam,
       reply: async (textOrOptions: string | Omit<MessageOptions, "to">): Promise<SentMessage> => {
         if (typeof textOrOptions === "string") {

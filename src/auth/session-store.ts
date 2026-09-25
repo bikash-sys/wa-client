@@ -4,6 +4,53 @@ import { SessionError } from "../errors/errors.js";
 import type { Logger } from "../utils/logger.js";
 
 /**
+ * Validates a session profile name to prevent directory traversal and illegal characters.
+ *
+ * Rules:
+ * - Must be a non-empty string
+ * - May not contain `/`, `\`, null bytes, or `..` path traversal segments
+ * - May not be an absolute path
+ * - May only contain alphanumeric characters, hyphens, and underscores (`^[a-zA-Z0-9_-]+$`)
+ *
+ * @param name - The session name to validate
+ * @returns The sanitized, trimmed session name
+ * @throws {SessionError} If the session name fails validation
+ */
+export function validateSessionName(name: string): string {
+  if (typeof name !== "string" || name.trim().length === 0) {
+    throw new SessionError("Session name must be a non-empty string", "ERR_INVALID_SESSION_NAME");
+  }
+
+  const trimmed = name.trim();
+
+  // Explicit checks for path traversal patterns and directory separators
+  if (
+    trimmed === "." ||
+    trimmed === ".." ||
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("\0") ||
+    trimmed.includes("..") ||
+    path.isAbsolute(trimmed)
+  ) {
+    throw new SessionError(
+      `Invalid session name "${name}": path traversal characters are not allowed`,
+      "ERR_INVALID_SESSION_NAME",
+    );
+  }
+
+  // Allow standard safe session names (alphanumerics, underscores, hyphens)
+  if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+    throw new SessionError(
+      `Invalid session name "${name}": session name may only contain alphanumeric characters, underscores, and hyphens`,
+      "ERR_INVALID_SESSION_NAME",
+    );
+  }
+
+  return trimmed;
+}
+
+/**
  * Manages physical storage, directory creation, validation, and lifecycle of WhatsApp session files.
  */
 export class SessionStore {
@@ -98,8 +145,8 @@ export class SessionStore {
   }
 
   /**
-   * Wipes all credentials and state files in the session directory.
-   * Used during logout or when clearing corrupted sessions.
+   * Wipes all credentials and state files inside the session directory.
+   * Used during logout or when resetting corrupted sessions.
    */
   public clear(): void {
     try {
@@ -121,6 +168,75 @@ export class SessionStore {
         "ERR_SESSION_CLEAR_FAILED",
         err,
       );
+    }
+  }
+
+  /**
+   * Completely removes the session directory and all its contents from disk.
+   */
+  public destroyDirectory(): void {
+    try {
+      if (fs.existsSync(this.sessionPath)) {
+        fs.rmSync(this.sessionPath, { recursive: true, force: true });
+        this.logger.debug(`Deleted session directory: ${this.sessionPath}`);
+      }
+    } catch (err) {
+      throw new SessionError(
+        `Failed to delete session directory: ${this.sessionPath}`,
+        "ERR_SESSION_DELETE_FAILED",
+        err,
+      );
+    }
+  }
+
+  /**
+   * Discovers existing session profile names inside an auth root directory on disk.
+   */
+  public static listSessionNames(authRoot: string): string[] {
+    try {
+      const resolved = path.resolve(authRoot);
+      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+        return [];
+      }
+
+      return fs
+        .readdirSync(resolved, { withFileTypes: true })
+        .filter((dirent) => {
+          if (!dirent.isDirectory()) return false;
+          try {
+            validateSessionName(dirent.name);
+            return true;
+          } catch {
+            return false;
+          }
+        })
+        .map((dirent) => dirent.name);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Checks if a session directory exists on disk.
+   */
+  public static sessionExists(authRoot: string, sessionName: string): boolean {
+    try {
+      const validName = validateSessionName(sessionName);
+      const sessionPath = path.join(path.resolve(authRoot), validName);
+      return fs.existsSync(sessionPath) && fs.statSync(sessionPath).isDirectory();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Deletes a session directory from disk.
+   */
+  public static removeSessionDirectory(authRoot: string, sessionName: string): void {
+    const validName = validateSessionName(sessionName);
+    const sessionPath = path.join(path.resolve(authRoot), validName);
+    if (fs.existsSync(sessionPath)) {
+      fs.rmSync(sessionPath, { recursive: true, force: true });
     }
   }
 }

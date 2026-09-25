@@ -33,7 +33,7 @@ function prompt(question: string): Promise<string> {
 
 async function run() {
   console.log("==========================================");
-  console.log("wp-client: Live Integration Test");
+  console.log("whatsapp-msg-client: Live Integration Test");
   console.log("==========================================");
   console.log("This test connects to a live WhatsApp account via QR authentication");
   console.log("and sends a single verification message.\n");
@@ -66,7 +66,7 @@ async function run() {
     try {
       const result = await wa.sendMessage(
         recipient!,
-        "Hello! This is a test message sent via wp-client.",
+        "Hello! This is a test message sent via whatsapp-msg-client.",
       );
       console.log("✓ Message delivered successfully!");
       console.log("Message info:", result);
