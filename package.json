@@ -1,0 +1,76 @@
+{
+  "name": "whatsapp-mailer",
+  "version": "0.1.0",
+  "description": "Simple WhatsApp Web client for Node.js with QR authentication, persistent sessions, messaging, media, and event handling.",
+  "keywords": [
+    "whatsapp",
+    "whatsapp-web",
+    "baileys",
+    "messaging",
+    "automation",
+    "bot",
+    "qr-code",
+    "client",
+    "mailer"
+  ],
+  "license": "MIT",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/placeholder/whatsapp-mailer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/placeholder/whatsapp-mailer/issues"
+  },
+  "homepage": "https://github.com/placeholder/whatsapp-mailer#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": {
+        "import": "./dist/index.d.ts",
+        "require": "./dist/index.d.cts"
+      },
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist coverage .temp",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "tsx examples/integration.ts",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,js,json,md}\" \"examples/**/*.{ts,js,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\" \"tests/**/*.{ts,js,json,md}\" \"examples/**/*.{ts,js,json,md}\"",
+    "prepublishOnly": "npm run clean && npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@types/node": "^20.17.19",
+    "@types/qrcode-terminal": "^0.12.2",
+    "eslint": "^9.20.1",
+    "prettier": "^3.5.1",
+    "tsup": "^8.3.6",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.5"
+  }
+}
