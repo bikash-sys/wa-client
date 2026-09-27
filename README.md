@@ -2,7 +2,7 @@
 
 > Simple, developer-friendly WhatsApp Web client for Node.js with QR authentication, named persistent sessions, messaging, media attachments, and event handling. Built to feel as intuitive as Nodemailer.
 
-[![npm version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
+[![npm version](https://img.shields.io/badge/version-0.1.2-blue.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org)
 

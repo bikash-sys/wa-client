@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-09-28
+
+### Added
+- **Health & Connection Status API**: New `wa.isReady()`, `wa.isReconnecting()`, `wa.getStatus()`, and `wa.health()` methods for developer observability and production uptime checks.
+- **`WhatsAppStatus` Type**: Exported typed status object `{ session, connected, ready, reconnecting, state }` for structured connection reporting.
+- **`WhatsAppHealth` Type**: Exported typed health object extending `WhatsAppStatus` with `healthy: boolean` — `true` only when the client is connected, ready, and not reconnecting.
+
+### Changed & Fixed
+- **Bad MAC / Libsignal Decrypt Error Suppression**: Extended the existing `console.error` interceptor to suppress raw libsignal `Failed to decrypt message with any known session...` and `Session error:Error: Bad MAC` stack traces from reaching the terminal. These are expected internal Baileys code paths; Baileys handles the resulting `SessionError` automatically and the raw output contained no actionable information for package users.
+- **Repository URLs**: Updated `package.json` repository, bugs, and homepage fields to the correct GitHub repository (`bikash-sys/wa-client`).
+
 ## [0.1.1] - 2026-09-25
 
 ### Added
