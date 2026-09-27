@@ -18,8 +18,25 @@
  */
 
 // ─── Console interceptor (defence in depth) ────────────────────────────────
-// Intercept console.info and console.warn to suppress sensitive SessionEntry objects
-// that libsignal may print via internal code paths.
+// Intercepts console.info, console.warn, and console.error to suppress two
+// classes of sensitive or noisy libsignal messages:
+//
+//  1. Session-state dumps from SessionRecord (console.info / console.warn):
+//     "Closing session:", "Opening session:", etc.
+//     These print full SignalProtocol session objects containing root keys,
+//     chain keys, and ratchet state — none of which should appear in logs.
+//
+//  2. Bad MAC / no-session decryption errors from session_cipher.js (console.error):
+//     "Failed to decrypt message with any known session..."
+//     "Session error:Error: Bad MAC  Error: Bad MAC\n  at Object.verifyMAC..."
+//     These are expected code paths exercised when Baileys attempts to
+//     decrypt an incoming message with every known session and none succeed.
+//     The raw libsignal stack trace contains no actionable information for
+//     package users and produces significant terminal noise.
+//     Baileys catches the resulting SessionError and handles retries internally.
+//
+// All other console.error output is passed through completely unchanged.
+
 const SENSITIVE_SESSION_PREFIXES = [
   "Closing session:",
   "Opening session:",
@@ -29,9 +46,17 @@ const SENSITIVE_SESSION_PREFIXES = [
   "Decrypted message with closed session",
 ];
 
+// These exact console.error prefixes are emitted by libsignal/src/session_cipher.js
+// decryptWithSessions() when no session can decrypt the incoming message.
+const LIBSIGNAL_DECRYPT_ERROR_PREFIXES = [
+  "Failed to decrypt message with any known session",
+  "Session error:",
+];
+
 // Save originals before we touch anything
 const _origConsoleInfo = console.info.bind(console);
 const _origConsoleWarn = console.warn.bind(console);
+const _origConsoleError = console.error.bind(console);
 
 console.info = function safeConsoleInfo(...args: unknown[]): void {
   if (typeof args[0] === "string") {
@@ -55,6 +80,20 @@ console.warn = function safeConsoleWarn(...args: unknown[]): void {
     }
   }
   _origConsoleWarn(...args);
+};
+
+console.error = function safeConsoleError(...args: unknown[]): void {
+  if (typeof args[0] === "string") {
+    for (const prefix of LIBSIGNAL_DECRYPT_ERROR_PREFIXES) {
+      if (args[0].startsWith(prefix)) {
+        // Suppress raw libsignal Bad MAC / no-session stack trace.
+        // This is an expected internal code path in session_cipher.js and
+        // Baileys handles the resulting SessionError automatically.
+        return;
+      }
+    }
+  }
+  _origConsoleError(...args);
 };
 
 // ─── Prototype patch ────────────────────────────────────────────────────────
