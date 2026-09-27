@@ -90,6 +90,30 @@ export interface SessionInfo {
 }
 
 /**
+ * Clean status summary representing the current client and session state.
+ */
+export interface WhatsAppStatus {
+  /** Named session profile identifier */
+  session: string;
+  /** Whether the underlying socket connection is established */
+  connected: boolean;
+  /** Whether the client is authenticated and ready to send messages */
+  ready: boolean;
+  /** Whether the client is currently attempting to reconnect */
+  reconnecting: boolean;
+  /** Current connection lifecycle state */
+  state: ConnectionState;
+}
+
+/**
+ * Health assessment report for observability and uptime checks.
+ */
+export interface WhatsAppHealth extends WhatsAppStatus {
+  /** Whether the client is currently healthy and usable for messaging */
+  healthy: boolean;
+}
+
+/**
  * Result returned after successfully sending a message.
  */
 export interface SentMessage {

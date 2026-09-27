@@ -114,4 +114,27 @@ describe("ConnectionManager", () => {
     expect(onReconnecting).toHaveBeenCalled();
     manager.stop();
   });
+
+  it("should accurately report isReconnecting status", () => {
+    const transport = createMockTransport();
+    const manager = new ConnectionManager(transport, new SilentLogger(), {
+      reconnect: true,
+      maxReconnectAttempts: 2,
+      reconnectIntervalMs: 100,
+    });
+
+    expect(manager.isReconnecting()).toBe(false);
+
+    manager.scheduleReconnect(vi.fn(), vi.fn());
+    expect(manager.isReconnecting()).toBe(true);
+
+    manager.resetAttempts();
+    expect(manager.isReconnecting()).toBe(false);
+
+    manager.scheduleReconnect(vi.fn(), vi.fn());
+    expect(manager.isReconnecting()).toBe(true);
+
+    manager.stop();
+    expect(manager.isReconnecting()).toBe(false);
+  });
 });

@@ -315,6 +315,68 @@ wa.on("message", async (msg) => {
 
 ---
 
+## Health & Connection Status
+
+`whatsapp-msg-client` exposes lightweight, side-effect-free methods to inspect connection state and perform health checks for observability and uptime monitoring:
+
+```typescript
+// Quick boolean status checks
+if (wa.isConnected()) {
+  console.log("WhatsApp socket is connected");
+}
+
+if (wa.isReady()) {
+  console.log("Client is authenticated and ready for messaging");
+}
+
+if (wa.isReconnecting()) {
+  console.log("Currently attempting automatic reconnection...");
+}
+
+// Comprehensive status summary
+const status = wa.getStatus();
+console.log(status);
+// {
+//   session: "business",
+//   connected: true,
+//   ready: true,
+//   reconnecting: false,
+//   state: "connected"
+// }
+
+// Production health check
+const health = wa.health();
+if (health.healthy) {
+  console.log("WhatsApp client is healthy and ready to use");
+}
+```
+
+### Status Properties & Semantics
+
+- **`connected`**: `true` when the underlying transport socket connection is established.
+- **`ready`**: `true` when the client is authenticated and ready to send and receive messages.
+- **`reconnecting`**: `true` only while actively attempting to recover from a temporary disconnection.
+- **`healthy`**: `true` only when the client is currently usable for messaging (`connected && ready && !reconnecting`).
+- **`state`**: Current lifecycle state (`"disconnected" | "connecting" | "qr" | "connected" | "reconnecting" | "logged_out"`).
+
+### Health & Status Types
+
+```typescript
+interface WhatsAppStatus {
+  session: string;
+  connected: boolean;
+  ready: boolean;
+  reconnecting: boolean;
+  state: ConnectionState;
+}
+
+interface WhatsAppHealth extends WhatsAppStatus {
+  healthy: boolean;
+}
+```
+
+---
+
 ## Configuration Options
 
 ```typescript

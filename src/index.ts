@@ -54,6 +54,8 @@ export type { Logger, LogLevel } from "./utils/logger.js";
 export type {
   WhatsAppOptions,
   SessionInfo,
+  WhatsAppStatus,
+  WhatsAppHealth,
   ConnectionState,
   SentMessage,
   MessageOptions,

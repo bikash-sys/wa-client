@@ -20,6 +20,7 @@ export class ConnectionManager {
   private attemptCount = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isShuttingDown = false;
+  private isReconnectingFlag = false;
 
   constructor(transport: WhatsAppTransport, logger: Logger, config: ReconnectConfig = {}) {
     this.transport = transport;
@@ -29,17 +30,23 @@ export class ConnectionManager {
     this.baseIntervalMs = config.reconnectIntervalMs ?? 2000;
   }
 
+  public isReconnecting(): boolean {
+    return this.isReconnectingFlag && !this.isShuttingDown;
+  }
+
   public getAttemptCount(): number {
     return this.attemptCount;
   }
 
   public resetAttempts(): void {
     this.attemptCount = 0;
+    this.isReconnectingFlag = false;
     this.clearTimer();
   }
 
   public stop(): void {
     this.isShuttingDown = true;
+    this.isReconnectingFlag = false;
     this.clearTimer();
   }
 
@@ -57,10 +64,12 @@ export class ConnectionManager {
   ): boolean {
     if (this.isShuttingDown || !this.reconnectEnabled) {
       this.logger.debug("Automatic reconnection is disabled or client is stopping.");
+      this.isReconnectingFlag = false;
       return false;
     }
 
     if (this.attemptCount >= this.maxAttempts) {
+      this.isReconnectingFlag = false;
       const err = new ConnectionError(
         `Failed to reconnect to WhatsApp after ${this.maxAttempts} attempts`,
         "ERR_MAX_RECONNECT_REACHED",
@@ -71,6 +80,7 @@ export class ConnectionManager {
     }
 
     this.attemptCount++;
+    this.isReconnectingFlag = true;
 
     // Exponential backoff: base * 2^(attempt - 1) + jitter, capped at 30 seconds
     const exponential = this.baseIntervalMs * Math.pow(2, this.attemptCount - 1);

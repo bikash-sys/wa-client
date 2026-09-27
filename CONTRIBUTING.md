@@ -14,7 +14,7 @@ We strictly prohibit any contributions that promote:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/bikash-sys/whatsapp-msg-client.git
+   git clone https://github.com/bikash-sys/wa-client.git
    cd whatsapp-msg-client
    ```
 

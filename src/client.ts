@@ -18,7 +18,9 @@ import type {
   SessionInfo,
   VideoMessageOptions,
   WhatsAppEvents,
+  WhatsAppHealth,
   WhatsAppOptions,
+  WhatsAppStatus,
 } from "./types/index.js";
 
 /**
@@ -166,10 +168,57 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
   }
 
   /**
+   * Returns whether the client is authenticated and currently ready to send and receive messages.
+   */
+  public isReady(): boolean {
+    return this.isConnected();
+  }
+
+  /**
+   * Returns true only while the client is actively attempting to recover from a temporary disconnection.
+   */
+  public isReconnecting(): boolean {
+    return this.connectionManager.isReconnecting();
+  }
+
+  /**
    * Returns the current lifecycle state of the connection.
    */
   public getState(): ConnectionState {
+    if (this.connectionManager.isReconnecting()) {
+      return "reconnecting";
+    }
     return this.transport.getState();
+  }
+
+  /**
+   * Returns a clean, typed status summary representing the current client and session state.
+   */
+  public getStatus(): WhatsAppStatus {
+    const connected = this.isConnected();
+    const ready = this.isReady();
+    const reconnecting = this.isReconnecting();
+    const state = this.getState();
+
+    return {
+      session: this.sessionProfileName,
+      connected,
+      ready,
+      reconnecting,
+      state,
+    };
+  }
+
+  /**
+   * Performs a health check and returns a typed report indicating whether
+   * the client is healthy and usable for messaging.
+   */
+  public health(): WhatsAppHealth {
+    const status = this.getStatus();
+    return {
+      ...status,
+      healthy: status.connected && status.ready && !status.reconnecting,
+    };
   }
 
   /**
