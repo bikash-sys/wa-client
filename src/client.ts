@@ -449,6 +449,86 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
     }
   }
 
+  /**
+   * Sends a plain text message to a WhatsApp group by group name or group JID.
+   *
+   * If the `group` parameter ends with `@g.us`, it is treated directly as a group JID.
+   * Otherwise, the group name is resolved using existing group chat data.
+   *
+   * @param group - Group name (e.g. "Test") or group JID (e.g. "120363414422062021@g.us")
+   * @param text - Plain text message content
+   *
+   * @example
+   * ```typescript
+   * // Send using group name
+   * await wa.sendToGroup("Project Team", "Hello everyone!");
+   *
+   * // Send using group JID
+   * await wa.sendToGroup("120363414422062021@g.us", "Hello everyone!");
+   * ```
+   */
+  public async sendToGroup(group: string, text: string): Promise<SentMessage>;
+  /**
+   * Sends a message to a WhatsApp group using an options object.
+   *
+   * @param group - Group name or group JID
+   * @param options - Message options including text and optional quoted message
+   */
+  public async sendToGroup(
+    group: string,
+    options: Omit<MessageOptions, "to">,
+  ): Promise<SentMessage>;
+  public async sendToGroup(
+    group: string,
+    textOrOptions: string | Omit<MessageOptions, "to">,
+  ): Promise<SentMessage> {
+    if (typeof group !== "string" || !group.trim()) {
+      throw new WhatsAppError("Group must be a non-empty string", "ERR_INVALID_OPTIONS");
+    }
+
+    const trimmedGroup = group.trim();
+
+    // 1. Direct group JID
+    if (trimmedGroup.endsWith("@g.us")) {
+      if (typeof textOrOptions === "string") {
+        return this.send(trimmedGroup, textOrOptions);
+      }
+      return this.send({ ...textOrOptions, to: trimmedGroup });
+    }
+
+    // 2. Resolve group name
+    this.activeSendsCount++;
+    try {
+      const groups = await this.getChats({ type: "group", limit: 100 });
+      const matches = groups.filter((g) => g.name === group);
+
+      if (matches.length === 0) {
+        throw new WhatsAppError(`Group not found: ${group}`, "ERR_GROUP_NOT_FOUND");
+      }
+
+      if (matches.length > 1) {
+        throw new WhatsAppError(
+          `Multiple groups found with name: ${group}. Use the group JID instead.`,
+          "ERR_MULTIPLE_GROUPS_FOUND",
+        );
+      }
+
+      const targetGroup = matches[0];
+      if (!targetGroup) {
+        throw new WhatsAppError(`Group not found: ${group}`, "ERR_GROUP_NOT_FOUND");
+      }
+
+      const targetJid = targetGroup.id;
+      if (typeof textOrOptions === "string") {
+        return await this.send(targetJid, textOrOptions);
+      }
+      return await this.send({ ...textOrOptions, to: targetJid });
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
+  }
+
   // ============================================================================
   // Media Messaging Methods
   // ============================================================================

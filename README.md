@@ -230,6 +230,26 @@ await wa.send({
 });
 ```
 
+### Group Messages (`sendToGroup`)
+Send a message directly to a WhatsApp group using either the **group name** or the **group JID**:
+
+```typescript
+// 1. Send using the exact group name
+await wa.sendToGroup("Project Team", "Hello team, standup in 10 minutes!");
+
+// 2. Send using the group JID (@g.us)
+await wa.sendToGroup("120363414422062021@g.us", "Hello group!");
+
+// 3. Send using an options object (with quote/reply support)
+await wa.sendToGroup("Project Team", {
+  text: "Review completed!",
+});
+```
+
+- **Group Name Resolution**: Automatically resolves against your participating groups without needing manual JID lookups.
+- **Safety Checks**: If a group name is not found, throws `Group not found: <name>`. If multiple groups share the same name, throws `Multiple groups found with name: <name>. Use the group JID instead.` to avoid accidental broadcasts.
+- **Full Lifecycle Support**: Works seamlessly with persistent sessions, explicit connections, and one-shot sends.
+
 ### Images
 Send images from local files or in-memory `Buffer`s:
 

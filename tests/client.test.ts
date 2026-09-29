@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { WhatsApp } from "../src/client.js";
+import { WhatsAppError } from "../src/errors/errors.js";
 import { TypedEventEmitter } from "../src/events/event-emitter.js";
 import type { WhatsAppTransport, TransportEvents } from "../src/transport/transport.interface.js";
-import type { IncomingMessage, ConnectionState } from "../src/types/index.js";
+import type { IncomingMessage, ConnectionState, WhatsAppChat } from "../src/types/index.js";
 
 class MockTransport extends TypedEventEmitter<TransportEvents> implements WhatsAppTransport {
   private state: ConnectionState = "disconnected";
@@ -48,7 +49,11 @@ class MockTransport extends TypedEventEmitter<TransportEvents> implements WhatsA
     timestamp: 1700000000000,
   });
 
-  public getChats = vi.fn().mockResolvedValue([]);
+  public storedChats: WhatsAppChat[] = [];
+
+  public getChats = vi.fn().mockImplementation(async () => {
+    return this.storedChats;
+  });
 
   public getRawClient<T = unknown>(): T | undefined {
     return this.mockSocket as unknown as T;
@@ -536,5 +541,184 @@ describe("WhatsApp Client", () => {
     await expect(wa.send("919340748552", "Will fail")).rejects.toThrow(
       /Network connection refused/,
     );
+  });
+
+  describe("wa.sendToGroup() API", () => {
+    it("1. should send message to group directly using group JID (string overload)", async () => {
+      const transport = new MockTransport();
+      const wa = new WhatsApp({ transport, session: "group-test", logger: false });
+      await wa.connect();
+
+      const groupJid = "120363414422062021@g.us";
+      const result = await wa.sendToGroup(groupJid, "Hello group via JID!");
+
+      expect(result.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledWith(groupJid, "Hello group via JID!", {
+        quote: undefined,
+      });
+      // Ensure getChats was NOT called since JID was provided directly
+      expect(transport.getChats).not.toHaveBeenCalled();
+    });
+
+    it("1b. should send message to group directly using group JID (options overload)", async () => {
+      const transport = new MockTransport();
+      const wa = new WhatsApp({ transport, session: "group-test", logger: false });
+      await wa.connect();
+
+      const groupJid = "120363414422062021@g.us";
+      const result = await wa.sendToGroup(groupJid, { text: "Hello options group!" });
+
+      expect(result.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledWith(groupJid, "Hello options group!", {
+        quote: undefined,
+      });
+    });
+
+    it("2. should resolve group name and send message using group name", async () => {
+      const transport = new MockTransport();
+      transport.storedChats = [
+        { id: "120363414422062021@g.us", name: "Engineering Team", type: "group" },
+        { id: "120363414422062022@g.us", name: "Marketing Team", type: "group" },
+        { id: "919876543210@s.whatsapp.net", name: "John Doe", type: "private" },
+      ];
+
+      const wa = new WhatsApp({ transport, session: "group-test", logger: false });
+      await wa.connect();
+
+      const result = await wa.sendToGroup("Engineering Team", "Hello engineers!");
+
+      expect(result.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledWith(
+        "120363414422062021@g.us",
+        "Hello engineers!",
+        { quote: undefined },
+      );
+    });
+
+    it("2b. should resolve group name with options overload", async () => {
+      const transport = new MockTransport();
+      transport.storedChats = [
+        { id: "120363414422062021@g.us", name: "Engineering Team", type: "group" },
+      ];
+
+      const wa = new WhatsApp({ transport, session: "group-test", logger: false });
+      await wa.connect();
+
+      const result = await wa.sendToGroup("Engineering Team", { text: "Options msg" });
+
+      expect(result.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledWith(
+        "120363414422062021@g.us",
+        "Options msg",
+        { quote: undefined },
+      );
+    });
+
+    it("3. should throw clear error when group name is not found", async () => {
+      const transport = new MockTransport();
+      transport.storedChats = [
+        { id: "120363414422062021@g.us", name: "Engineering Team", type: "group" },
+      ];
+
+      const wa = new WhatsApp({ transport, session: "group-test", logger: false });
+      await wa.connect();
+
+      await expect(wa.sendToGroup("Test", "Hello")).rejects.toThrow("Group not found: Test");
+      await expect(wa.sendToGroup("Test", "Hello")).rejects.toMatchObject({
+        code: "ERR_GROUP_NOT_FOUND",
+      });
+    });
+
+    it("3b. should reject invalid/empty group inputs", async () => {
+      const transport = new MockTransport();
+      const wa = new WhatsApp({ transport, session: "group-test", logger: false });
+      await wa.connect();
+
+      // @ts-expect-error invalid group type
+      await expect(wa.sendToGroup(123, "Hello")).rejects.toThrow(WhatsAppError);
+      await expect(wa.sendToGroup("", "Hello")).rejects.toThrow(WhatsAppError);
+      await expect(wa.sendToGroup("   ", "Hello")).rejects.toThrow(WhatsAppError);
+    });
+
+    it("4. should throw clear error when multiple groups have duplicate names", async () => {
+      const transport = new MockTransport();
+      transport.storedChats = [
+        { id: "120363414422062021@g.us", name: "Duplicate Team", type: "group" },
+        { id: "120363414422062099@g.us", name: "Duplicate Team", type: "group" },
+      ];
+
+      const wa = new WhatsApp({ transport, session: "group-test", logger: false });
+      await wa.connect();
+
+      await expect(wa.sendToGroup("Duplicate Team", "Hello")).rejects.toThrow(
+        "Multiple groups found with name: Duplicate Team. Use the group JID instead.",
+      );
+      await expect(wa.sendToGroup("Duplicate Team", "Hello")).rejects.toMatchObject({
+        code: "ERR_MULTIPLE_GROUPS_FOUND",
+      });
+    });
+
+    it("5. should ensure existing send() still works unchanged for phones and groups", async () => {
+      const transport = new MockTransport();
+      const wa = new WhatsApp({ transport, session: "test", logger: false });
+      await wa.connect();
+
+      // Send to phone number
+      const phoneRes = await wa.send("919876543210", "Direct phone text");
+      expect(phoneRes.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledWith(
+        "919876543210@s.whatsapp.net",
+        "Direct phone text",
+        { quote: undefined },
+      );
+
+      // Send directly to group JID via send()
+      const groupRes = await wa.send("120363414422062021@g.us", "Direct group text");
+      expect(groupRes.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledWith(
+        "120363414422062021@g.us",
+        "Direct group text",
+        { quote: undefined },
+      );
+    });
+
+    it("6. should auto-connect and auto-disconnect on one-shot sendToGroup with group name", async () => {
+      const transport = new MockTransport();
+      transport.storedChats = [{ id: "120363414422062021@g.us", name: "Ops Team", type: "group" }];
+
+      const wa = new WhatsApp({ transport, session: "one-shot-group", logger: false });
+      expect(wa.isConnected()).toBe(false);
+
+      const result = await wa.sendToGroup("Ops Team", "Alert message");
+
+      expect(transport.connect).toHaveBeenCalledTimes(1);
+      expect(result.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledWith(
+        "120363414422062021@g.us",
+        "Alert message",
+        { quote: undefined },
+      );
+      // Auto-disconnects at end of one-shot sendToGroup
+      expect(transport.disconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it("6b. should keep connection alive when keepAlive is true with sendToGroup", async () => {
+      const transport = new MockTransport();
+      transport.storedChats = [{ id: "120363414422062021@g.us", name: "Ops Team", type: "group" }];
+
+      const wa = new WhatsApp({
+        transport,
+        session: "keepalive-group",
+        keepAlive: true,
+        logger: false,
+      });
+
+      const result = await wa.sendToGroup("Ops Team", "Persistent alert");
+      expect(result.id).toBe("sent-text-1");
+      expect(wa.isConnected()).toBe(true);
+      expect(transport.disconnect).not.toHaveBeenCalled();
+
+      await wa.destroy();
+    });
   });
 });
