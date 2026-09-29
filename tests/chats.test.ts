@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "node:fs";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { WhatsApp } from "../src/client.js";
 import { WhatsAppError } from "../src/errors/errors.js";
 import { TypedEventEmitter } from "../src/events/event-emitter.js";
@@ -179,14 +180,24 @@ describe("wa.getChats() Client API", () => {
 });
 
 describe("BaileysTransport Chat Processing & Sorting", () => {
+  const TEST_DIR = "./.temp/test-chats-transport";
   let transport: BaileysTransport;
 
+  const cleanup = () => {
+    fs.rmSync(TEST_DIR, { recursive: true, force: true });
+  };
+
   beforeEach(() => {
+    cleanup();
     transport = new BaileysTransport({
-      sessionPath: "./.temp/test-chats-transport",
+      sessionPath: TEST_DIR,
       sessionName: "test-session",
       logger: new SilentLogger(),
     });
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it("should return empty list when no chats have synced", async () => {
@@ -638,6 +649,70 @@ describe("BaileysTransport Chat Processing & Sorting", () => {
 
       await transport.destroy();
       expect(await transport.getChats()).toHaveLength(0);
+    });
+
+    it("should persist chats to disk and reload on cold start for persistent sessions", async () => {
+      const sessionDir = "./.temp/test-persistence-session";
+      const transport1 = new BaileysTransport({
+        sessionPath: sessionDir,
+        sessionName: "persistent-test",
+        logger: new SilentLogger(),
+      });
+
+      const t1Any = transport1 as unknown as {
+        upsertChatFromBaileys: (chat: unknown) => void;
+      };
+
+      t1Any.upsertChatFromBaileys({
+        id: "919876543210@s.whatsapp.net",
+        name: "Saved User",
+        conversationTimestamp: 1759123400,
+      });
+
+      t1Any.upsertChatFromBaileys({
+        id: "120363123456789@g.us",
+        name: "Saved Group",
+        conversationTimestamp: 1759123000,
+      });
+
+      const chatsBefore = await transport1.getChats();
+      expect(chatsBefore).toHaveLength(2);
+
+      // Now create a brand new transport instance pointing to the same session path (simulating app restart)
+      const transport2 = new BaileysTransport({
+        sessionPath: sessionDir,
+        sessionName: "persistent-test",
+        logger: new SilentLogger(),
+      });
+
+      const chatsAfter = await transport2.getChats();
+      expect(chatsAfter).toHaveLength(2);
+      expect(chatsAfter[0].name).toBe("Saved User");
+      expect(chatsAfter[1].name).toBe("Saved Group");
+    });
+
+    it("should sync participating groups from socket groupFetchAllParticipating", async () => {
+      const mockSock = {
+        groupFetchAllParticipating: vi.fn().mockResolvedValue({
+          "120363987654321@g.us": {
+            id: "120363987654321@g.us",
+            subject: "Live Server Group",
+            creation: 1759123999,
+          },
+        }),
+      };
+
+      const transportAny = transport as unknown as {
+        socket: unknown;
+        state: string;
+      };
+
+      transportAny.socket = mockSock;
+      transportAny.state = "connected";
+
+      const chats = await transport.getChats();
+      expect(mockSock.groupFetchAllParticipating).toHaveBeenCalled();
+      expect(chats.some((c) => c.name === "Live Server Group")).toBe(true);
     });
   });
 });

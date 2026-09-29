@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -136,6 +138,7 @@ export class BaileysTransport
     this.logger = options.logger;
     this.printQR = Boolean(options.printQRInTerminal ?? options.printQR ?? false);
     this.sessionStore = new SessionStore(options.sessionPath, this.logger);
+    this.loadChatsFromDisk();
   }
 
   public isConnected(): boolean {
@@ -164,6 +167,7 @@ export class BaileysTransport
 
     try {
       this.sessionStore.validate();
+      this.loadChatsFromDisk();
 
       const { state: authState, saveCreds } = await useMultiFileAuthState(
         this.sessionStore.getPath(),
@@ -184,7 +188,7 @@ export class BaileysTransport
         version,
         logger: pinoLogger,
         printQRInTerminal: false, // We control terminal rendering explicitly for cleaner UI
-        syncFullHistory: false,
+        syncFullHistory: true,
         markOnlineOnConnect: true,
         generateHighQualityLinkPreview: false,
       });
@@ -210,6 +214,8 @@ export class BaileysTransport
           this.qrCount = 0;
           this.setState("connected");
           this.logger.info("WhatsApp connection established.");
+          // Proactively fetch participating groups in background
+          void this.syncParticipatingGroups();
           this.emit("connected");
           this.emit("ready");
         } else if (connection === "close") {
@@ -270,6 +276,8 @@ export class BaileysTransport
             }
           }
         }
+
+        this.saveChatsToDisk();
       });
 
       // Handle chats upsert & update
@@ -279,6 +287,7 @@ export class BaileysTransport
             this.upsertChatFromBaileys(chat);
           }
         }
+        this.saveChatsToDisk();
       });
 
       sock.ev.on("chats.update", (updates) => {
@@ -287,6 +296,7 @@ export class BaileysTransport
             this.updateChatFromBaileys(update);
           }
         }
+        this.saveChatsToDisk();
       });
 
       sock.ev.on("chats.delete", (deletedIds) => {
@@ -295,6 +305,7 @@ export class BaileysTransport
             this.chats.delete(id);
           }
         }
+        this.saveChatsToDisk();
       });
 
       // Handle contacts
@@ -308,6 +319,7 @@ export class BaileysTransport
             });
           }
         }
+        this.saveChatsToDisk();
       });
 
       sock.ev.on("contacts.update", (updates) => {
@@ -320,6 +332,7 @@ export class BaileysTransport
             });
           }
         }
+        this.saveChatsToDisk();
       });
 
       // Handle groups
@@ -337,6 +350,7 @@ export class BaileysTransport
             });
           }
         }
+        this.saveChatsToDisk();
       });
 
       sock.ev.on("groups.update", (updates) => {
@@ -353,6 +367,7 @@ export class BaileysTransport
             }
           }
         }
+        this.saveChatsToDisk();
       });
 
       // Handle incoming messages
@@ -415,6 +430,9 @@ export class BaileysTransport
       }
       this.socket = null;
     }
+    this.chats.clear();
+    this.contacts.clear();
+    this.groupMetadataCache.clear();
     this.sessionStore.clear();
     this.setState("logged_out");
     this.emit("logged_out");
@@ -434,11 +452,110 @@ export class BaileysTransport
   }
 
   /**
+   * Synchronizes participating groups with WhatsApp server if socket is connected.
+   */
+  private async syncParticipatingGroups(): Promise<void> {
+    if (!this.socket) return;
+    const rawSock = this.socket as {
+      groupFetchAllParticipating?: () => Promise<
+        Record<string, { subject?: string; creation?: number }>
+      >;
+    };
+    if (typeof rawSock.groupFetchAllParticipating === "function") {
+      try {
+        const groups = await rawSock.groupFetchAllParticipating();
+        if (groups && typeof groups === "object") {
+          for (const [id, meta] of Object.entries(groups)) {
+            if (!id || typeof id !== "string") continue;
+            const subject = meta?.subject;
+            if (subject) {
+              this.groupMetadataCache.set(id, { subject });
+            }
+            const existing = this.chats.get(id);
+            this.chats.set(id, {
+              id,
+              name: subject || existing?.name,
+              type: "group",
+              lastMessage: existing?.lastMessage,
+              timestamp: parseTimestamp(meta?.creation) ?? existing?.timestamp,
+            });
+          }
+          this.saveChatsToDisk();
+        }
+      } catch (err) {
+        this.logger.debug("Failed to sync participating groups:", err);
+      }
+    }
+  }
+
+  private loadChatsFromDisk(): void {
+    try {
+      const sessionDir = this.sessionStore.getPath();
+      const filePath = path.join(sessionDir, "chats-store.json");
+      if (!fs.existsSync(filePath)) return;
+
+      const raw = fs.readFileSync(filePath, "utf-8");
+      if (!raw.trim()) return;
+
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        if (Array.isArray(parsed.chats)) {
+          for (const c of parsed.chats) {
+            if (c && typeof c.id === "string" && (c.type === "private" || c.type === "group")) {
+              this.chats.set(c.id, c as CachedChat);
+            }
+          }
+        }
+        if (parsed.contacts && typeof parsed.contacts === "object") {
+          for (const [id, contact] of Object.entries(parsed.contacts)) {
+            if (contact && typeof contact === "object") {
+              this.contacts.set(id, contact as CachedContact);
+            }
+          }
+        }
+        if (parsed.groups && typeof parsed.groups === "object") {
+          for (const [id, group] of Object.entries(parsed.groups)) {
+            if (group && typeof group === "object") {
+              this.groupMetadataCache.set(id, group as CachedGroup);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.debug("Failed to load cached chats from disk:", err);
+    }
+  }
+
+  private saveChatsToDisk(): void {
+    try {
+      const sessionDir = this.sessionStore.getPath();
+      if (!fs.existsSync(sessionDir)) {
+        fs.mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
+      }
+
+      const filePath = path.join(sessionDir, "chats-store.json");
+      const data = {
+        chats: Array.from(this.chats.values()),
+        contacts: Object.fromEntries(this.contacts.entries()),
+        groups: Object.fromEntries(this.groupMetadataCache.entries()),
+      };
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    } catch (err) {
+      this.logger.debug("Failed to save chats to disk:", err);
+    }
+  }
+
+  /**
    * Returns active chats sorted by most recent activity descending.
    */
   public async getChats(options?: GetChatsOptions): Promise<WhatsAppChat[]> {
     const limit = options?.limit ?? 20;
     const typeFilter = options?.type ?? "all";
+
+    // If connected, sync participating groups to capture any server-side additions or name changes
+    if (this.state === "connected" && this.socket) {
+      await this.syncParticipatingGroups();
+    }
 
     const results: WhatsAppChat[] = [];
 
@@ -524,6 +641,7 @@ export class BaileysTransport
       lastMessage: lastMsg,
       timestamp: ts,
     });
+    this.saveChatsToDisk();
   }
 
   private updateChatFromBaileys(update: ChatUpdate | null | undefined): void {
@@ -548,6 +666,7 @@ export class BaileysTransport
       lastMessage: existing?.lastMessage,
       timestamp: ts,
     });
+    this.saveChatsToDisk();
   }
 
   private updateChatFromMessage(wam: WAMessage | null | undefined): void {
@@ -580,6 +699,7 @@ export class BaileysTransport
       lastMessage: text !== undefined ? text : existing?.lastMessage,
       timestamp: shouldUpdateTs ? msgTs : currentTs,
     });
+    this.saveChatsToDisk();
   }
 
   /**
