@@ -72,6 +72,41 @@ export interface WhatsAppOptions {
 }
 
 /**
+ * Representation of a WhatsApp chat.
+ */
+export interface WhatsAppChat {
+  /** Unique chat identifier (e.g. "919876543210@s.whatsapp.net" or "120363123456789@g.us") */
+  id: string;
+  /** Display name, group subject, or contact push name */
+  name: string;
+  /** Whether this is an individual direct chat or a group chat */
+  type: "private" | "group";
+  /** Readable text content of the last message if available */
+  lastMessage?: string;
+  /** Unix timestamp of the most recent known activity */
+  timestamp?: number;
+}
+
+/**
+ * Options for querying WhatsApp chats.
+ */
+export interface GetChatsOptions {
+  /**
+   * Maximum number of chats to return (positive integer between 1 and 100).
+   * Defaults to 20.
+   */
+  limit?: number;
+  /**
+   * Filter chats by type.
+   * - "all": return both private and group chats (default)
+   * - "private": return only direct 1-on-1 chats
+   * - "group": return only group chats
+   * Defaults to "all".
+   */
+  type?: "all" | "private" | "group";
+}
+
+/**
  * Information about a named session profile.
  */
 export interface SessionInfo {

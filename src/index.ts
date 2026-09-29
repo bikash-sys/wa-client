@@ -56,6 +56,8 @@ export type {
   SessionInfo,
   WhatsAppStatus,
   WhatsAppHealth,
+  WhatsAppChat,
+  GetChatsOptions,
   ConnectionState,
   SentMessage,
   MessageOptions,

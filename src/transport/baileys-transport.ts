@@ -6,6 +6,8 @@ import makeWASocket, {
   type WAMessage,
   type AnyMessageContent,
   type proto,
+  type Chat,
+  type ChatUpdate,
 } from "@whiskeysockets/baileys";
 import qrcode from "qrcode-terminal";
 import { TypedEventEmitter } from "../events/event-emitter.js";
@@ -16,9 +18,11 @@ import { patchLibsignalLogs } from "../utils/patch-libsignal.js";
 import { jidToPhoneNumber } from "../utils/phone.js";
 import type {
   ConnectionState,
+  GetChatsOptions,
   IncomingMessage,
   MessageOptions,
   SentMessage,
+  WhatsAppChat,
 } from "../types/index.js";
 import type {
   MediaPayload,
@@ -44,6 +48,60 @@ function extractText(message: proto.IMessage | null | undefined): string | undef
 }
 
 /**
+ * Safely parses timestamps from Baileys which may be numbers, Longs, strings, or undefined.
+ * Normalizes all timestamps to standard Unix seconds.
+ */
+function parseTimestamp(ts: unknown): number | undefined {
+  if (ts === null || ts === undefined) return undefined;
+  if (typeof ts === "number") {
+    if (Number.isNaN(ts) || !Number.isFinite(ts) || ts <= 0) return undefined;
+    return ts > 100_000_000_000 ? Math.floor(ts / 1000) : Math.floor(ts);
+  }
+  if (
+    typeof ts === "object" &&
+    ts !== null &&
+    "toNumber" in ts &&
+    typeof (ts as { toNumber: () => number }).toNumber === "function"
+  ) {
+    const num = (ts as { toNumber: () => number }).toNumber();
+    return parseTimestamp(num);
+  }
+  if (typeof ts === "string") {
+    const parsed = Number(ts);
+    return parseTimestamp(parsed);
+  }
+  return undefined;
+}
+
+/**
+ * Determines whether a JID belongs to a private 1-on-1 chat or a group chat.
+ * Returns null for status, broadcast, newsletter, or unsupported JIDs.
+ */
+function getChatType(jid: string): "private" | "group" | null {
+  if (typeof jid !== "string") return null;
+  if (jid.endsWith("@g.us")) return "group";
+  if (jid.endsWith("@s.whatsapp.net")) return "private";
+  return null;
+}
+
+interface CachedChat {
+  id: string;
+  name?: string;
+  type: "private" | "group";
+  lastMessage?: string;
+  timestamp?: number;
+}
+
+interface CachedContact {
+  name?: string;
+  notify?: string;
+}
+
+interface CachedGroup {
+  subject?: string;
+}
+
+/**
  * Baileys-based implementation of the WhatsAppTransport interface.
  */
 export class BaileysTransport
@@ -59,6 +117,10 @@ export class BaileysTransport
   private state: ConnectionState = "disconnected";
   private isExplicitDisconnect = false;
   private isExplicitDestroy = false;
+
+  private chats = new Map<string, CachedChat>();
+  private contacts = new Map<string, CachedContact>();
+  private groupMetadataCache = new Map<string, CachedGroup>();
 
   constructor(options: {
     sessionPath: string;
@@ -164,6 +226,9 @@ export class BaileysTransport
           if (isLoggedOut) {
             this.setState("logged_out");
             this.sessionStore.clear();
+            this.chats.clear();
+            this.contacts.clear();
+            this.groupMetadataCache.clear();
             this.emit("logged_out");
             this.emit("disconnected", "User logged out from WhatsApp", true);
           } else {
@@ -176,11 +241,128 @@ export class BaileysTransport
         }
       });
 
+      // Handle history sync
+      sock.ev.on("messaging-history.set", ({ chats, contacts, messages }) => {
+        if (contacts) {
+          for (const c of contacts) {
+            if (c && c.id) {
+              const existing = this.contacts.get(c.id) || {};
+              this.contacts.set(c.id, {
+                name: c.name ?? existing.name,
+                notify: c.notify ?? existing.notify,
+              });
+            }
+          }
+        }
+
+        if (chats) {
+          for (const chat of chats) {
+            if (chat && chat.id) {
+              this.upsertChatFromBaileys(chat);
+            }
+          }
+        }
+
+        if (messages) {
+          for (const msg of messages) {
+            if (msg && msg.key?.remoteJid) {
+              this.updateChatFromMessage(msg);
+            }
+          }
+        }
+      });
+
+      // Handle chats upsert & update
+      sock.ev.on("chats.upsert", (newChats) => {
+        for (const chat of newChats) {
+          if (chat && chat.id) {
+            this.upsertChatFromBaileys(chat);
+          }
+        }
+      });
+
+      sock.ev.on("chats.update", (updates) => {
+        for (const update of updates) {
+          if (update && update.id) {
+            this.updateChatFromBaileys(update);
+          }
+        }
+      });
+
+      sock.ev.on("chats.delete", (deletedIds) => {
+        for (const id of deletedIds) {
+          if (id) {
+            this.chats.delete(id);
+          }
+        }
+      });
+
+      // Handle contacts
+      sock.ev.on("contacts.upsert", (newContacts) => {
+        for (const c of newContacts) {
+          if (c && c.id) {
+            const existing = this.contacts.get(c.id) || {};
+            this.contacts.set(c.id, {
+              name: c.name ?? existing.name,
+              notify: c.notify ?? existing.notify,
+            });
+          }
+        }
+      });
+
+      sock.ev.on("contacts.update", (updates) => {
+        for (const c of updates) {
+          if (c && c.id) {
+            const existing = this.contacts.get(c.id) || {};
+            this.contacts.set(c.id, {
+              name: c.name ?? existing.name,
+              notify: c.notify ?? existing.notify,
+            });
+          }
+        }
+      });
+
+      // Handle groups
+      sock.ev.on("groups.upsert", (groups) => {
+        for (const g of groups) {
+          if (g && g.id) {
+            this.groupMetadataCache.set(g.id, { subject: g.subject });
+            const existing = this.chats.get(g.id);
+            this.chats.set(g.id, {
+              id: g.id,
+              name: g.subject || existing?.name,
+              type: "group",
+              lastMessage: existing?.lastMessage,
+              timestamp: existing?.timestamp,
+            });
+          }
+        }
+      });
+
+      sock.ev.on("groups.update", (updates) => {
+        for (const g of updates) {
+          if (g && g.id) {
+            const cached = this.groupMetadataCache.get(g.id);
+            const subject = g.subject ?? cached?.subject;
+            if (subject) {
+              this.groupMetadataCache.set(g.id, { subject });
+              const existing = this.chats.get(g.id);
+              if (existing) {
+                existing.name = subject;
+              }
+            }
+          }
+        }
+      });
+
       // Handle incoming messages
       sock.ev.on("messages.upsert", async ({ messages, type }) => {
         if (type !== "notify" && type !== "append") return;
 
         for (const wam of messages) {
+          if (wam.key?.remoteJid) {
+            this.updateChatFromMessage(wam);
+          }
           if (!wam.message) continue;
 
           // Prevent processing protocol sync stubs
@@ -244,8 +426,160 @@ export class BaileysTransport
   public async destroy(): Promise<void> {
     this.qrCount = 0;
     this.isExplicitDestroy = true;
+    this.chats.clear();
+    this.contacts.clear();
+    this.groupMetadataCache.clear();
     await this.disconnect();
     this.removeAllListeners();
+  }
+
+  /**
+   * Returns active chats sorted by most recent activity descending.
+   */
+  public async getChats(options?: GetChatsOptions): Promise<WhatsAppChat[]> {
+    const limit = options?.limit ?? 20;
+    const typeFilter = options?.type ?? "all";
+
+    const results: WhatsAppChat[] = [];
+
+    for (const chat of this.chats.values()) {
+      if (typeFilter !== "all" && chat.type !== typeFilter) {
+        continue;
+      }
+
+      let name = chat.name;
+      if (chat.type === "group") {
+        const groupMeta = this.groupMetadataCache.get(chat.id);
+        name = groupMeta?.subject || name || chat.id;
+      } else {
+        const contact = this.contacts.get(chat.id);
+        name = contact?.name || contact?.notify || name || jidToPhoneNumber(chat.id) || chat.id;
+      }
+
+      const item: WhatsAppChat = {
+        id: chat.id,
+        name,
+        type: chat.type,
+      };
+
+      if (chat.lastMessage !== undefined) {
+        item.lastMessage = chat.lastMessage;
+      }
+      if (chat.timestamp !== undefined) {
+        item.timestamp = chat.timestamp;
+      }
+
+      results.push(item);
+    }
+
+    // Sort descending by timestamp. Chats with missing timestamps go last.
+    results.sort((a, b) => {
+      if (a.timestamp !== undefined && b.timestamp !== undefined) {
+        return b.timestamp - a.timestamp;
+      }
+      if (a.timestamp !== undefined && b.timestamp === undefined) {
+        return -1;
+      }
+      if (a.timestamp === undefined && b.timestamp !== undefined) {
+        return 1;
+      }
+      return 0;
+    });
+
+    return results.slice(0, limit);
+  }
+
+  private upsertChatFromBaileys(chat: Partial<Chat> | null | undefined): void {
+    if (!chat || typeof chat !== "object") return;
+    const jid = chat.id;
+    if (!jid || typeof jid !== "string") return;
+    const chatType = getChatType(jid);
+    if (!chatType) return; // Skip status, newsletter, broadcast, etc.
+
+    const existing = this.chats.get(jid);
+    const ts =
+      parseTimestamp(chat.conversationTimestamp) ??
+      parseTimestamp(chat.lastMsgTimestamp) ??
+      parseTimestamp(chat.lastMessageRecvTimestamp) ??
+      existing?.timestamp;
+
+    let lastMsg: string | undefined = existing?.lastMessage;
+    if (Array.isArray(chat.messages) && chat.messages.length > 0) {
+      const latest = chat.messages[0];
+      const text = extractText(
+        (latest?.message as proto.IMessage | undefined) ??
+          (latest as { message?: { message?: proto.IMessage } })?.message?.message,
+      );
+      if (text !== undefined) {
+        lastMsg = text;
+      }
+    }
+
+    const name = chat.name || existing?.name;
+
+    this.chats.set(jid, {
+      id: jid,
+      name,
+      type: chatType,
+      lastMessage: lastMsg,
+      timestamp: ts,
+    });
+  }
+
+  private updateChatFromBaileys(update: ChatUpdate | null | undefined): void {
+    if (!update || typeof update !== "object") return;
+    const jid = update.id;
+    if (!jid || typeof jid !== "string") return;
+    const chatType = getChatType(jid);
+    if (!chatType) return;
+
+    const existing = this.chats.get(jid);
+    const ts =
+      parseTimestamp(update.conversationTimestamp) ??
+      parseTimestamp(update.timestamp) ??
+      existing?.timestamp;
+
+    const name = update.name || existing?.name;
+
+    this.chats.set(jid, {
+      id: jid,
+      name,
+      type: chatType,
+      lastMessage: existing?.lastMessage,
+      timestamp: ts,
+    });
+  }
+
+  private updateChatFromMessage(wam: WAMessage | null | undefined): void {
+    if (!wam || typeof wam !== "object") return;
+    const remoteJid = wam.key?.remoteJid;
+    if (!remoteJid || typeof remoteJid !== "string") return;
+    const chatType = getChatType(remoteJid);
+    if (!chatType) return;
+
+    const existing = this.chats.get(remoteJid);
+    const msgTs = parseTimestamp(wam.messageTimestamp);
+    const text = extractText(wam.message);
+
+    if (wam.pushName && !wam.key?.fromMe) {
+      const senderJid = wam.key?.participant || remoteJid;
+      const existingContact = this.contacts.get(senderJid) || {};
+      this.contacts.set(senderJid, {
+        ...existingContact,
+        notify: wam.pushName,
+      });
+    }
+
+    const currentTs = existing?.timestamp;
+    const shouldUpdateTs = msgTs !== undefined && (currentTs === undefined || msgTs >= currentTs);
+
+    this.chats.set(remoteJid, {
+      id: remoteJid,
+      name: existing?.name,
+      type: chatType,
+      lastMessage: text !== undefined ? text : existing?.lastMessage,
+      timestamp: shouldUpdateTs ? msgTs : currentTs,
+    });
   }
 
   /**
@@ -271,6 +605,10 @@ export class BaileysTransport
       const sent = await this.socket.sendMessage(toJid, content, sendOptions);
       if (!sent || !sent.key) {
         throw new MessageError("No response received from WhatsApp when sending message");
+      }
+
+      if (sent.key.remoteJid) {
+        this.updateChatFromMessage(sent);
       }
 
       const timestamp =
@@ -352,6 +690,10 @@ export class BaileysTransport
       const sent = await this.socket.sendMessage(toJid, content, sendOptions);
       if (!sent || !sent.key) {
         throw new MessageError("No response received from WhatsApp when sending media");
+      }
+
+      if (sent.key.remoteJid) {
+        this.updateChatFromMessage(sent);
       }
 
       const timestamp =

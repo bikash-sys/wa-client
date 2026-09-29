@@ -55,6 +55,8 @@ class MockTransport extends TypedEventEmitter<TransportEvents> implements WhatsA
     timestamp: Date.now(),
   });
 
+  public getChats = vi.fn().mockResolvedValue([]);
+
   public getRawClient<T = unknown>(): T | undefined {
     return this.mockSocket as unknown as T;
   }

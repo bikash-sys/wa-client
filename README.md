@@ -298,6 +298,64 @@ wa.on("message", async (msg) => {
 
 ---
 
+## Get Chats
+
+Fetch your most recently active WhatsApp conversations with a clean, typed API:
+
+```javascript
+const chats = await wa.getChats({
+  limit: 5,
+  type: "all",
+});
+```
+
+### Options
+
+- `limit` *(number, optional)*: Maximum number of chats to return (positive integer, 1 to 100). Defaults to `20`.
+- `type` *("all" | "private" | "group", optional)*: Filter chats by conversation type. Defaults to `"all"`.
+  - `"all"`: Returns both direct 1-on-1 private chats and group chats.
+  - `"private"`: Returns only direct 1-on-1 individual chats (`@s.whatsapp.net`).
+  - `"group"`: Returns only group chats (`@g.us`).
+
+### Filter by Chat Type
+
+```javascript
+// Get top 5 most recent private chats
+const privateChats = await wa.getChats({ limit: 5, type: "private" });
+
+// Get top 5 most recent group chats
+const groupChats = await wa.getChats({ limit: 5, type: "group" });
+```
+
+### Activity Ordering & Safe Public Metadata
+
+- **Ordering**: Chats are sorted descending by their most recent known activity/message timestamp. Chats without known timestamps appear after chats with timestamps.
+- **Group Support**: Group subject/name metadata is resolved automatically without performing unnecessary network queries in a loop.
+- **Privacy & Security**: Results contain only safe public metadata (`id`, `name`, `type`, `lastMessage`, `timestamp`) and never leak encryption keys, signal session state, or credentials.
+
+Example response:
+
+```json
+[
+  {
+    "id": "919876543210@s.whatsapp.net",
+    "name": "Rahul",
+    "type": "private",
+    "lastMessage": "Hey bro",
+    "timestamp": 1759123400
+  },
+  {
+    "id": "120363123456789@g.us",
+    "name": "VAJRAX Robotics",
+    "type": "group",
+    "lastMessage": "Meeting at 6",
+    "timestamp": 1759123000
+  }
+]
+```
+
+---
+
 ## Events
 
 | Event | Arguments | Description |

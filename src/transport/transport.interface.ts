@@ -1,4 +1,10 @@
-import type { ConnectionState, IncomingMessage, SentMessage } from "../types/index.js";
+import type {
+  ConnectionState,
+  GetChatsOptions,
+  IncomingMessage,
+  SentMessage,
+  WhatsAppChat,
+} from "../types/index.js";
 import type { TypedEventEmitter } from "../events/event-emitter.js";
 
 export type MediaPayload = { path: string; data?: never } | { data: Buffer; path?: never };
@@ -48,5 +54,6 @@ export interface WhatsAppTransport extends TypedEventEmitter<TransportEvents> {
     payload: MediaPayload,
     options?: TransportMediaOptions,
   ): Promise<SentMessage>;
+  getChats(options?: GetChatsOptions): Promise<WhatsAppChat[]>;
   getRawClient<T = unknown>(): T | undefined;
 }

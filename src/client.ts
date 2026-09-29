@@ -5,18 +5,20 @@ import { ConnectionManager } from "./connection/connection-manager.js";
 import { MessageService } from "./messages/message-service.js";
 import { SessionStore, validateSessionName, assertSafeSessionPath } from "./auth/session-store.js";
 import { DEFAULT_CONFIG } from "./config.js";
-import { ConnectionError } from "./errors/errors.js";
+import { WhatsAppError, ConnectionError } from "./errors/errors.js";
 import { resolveLogger, SilentLogger, type Logger } from "./utils/logger.js";
 import type { WhatsAppTransport } from "./transport/transport.interface.js";
 import type {
   AudioMessageOptions,
   ConnectionState,
   DocumentMessageOptions,
+  GetChatsOptions,
   ImageMessageOptions,
   MessageOptions,
   SentMessage,
   SessionInfo,
   VideoMessageOptions,
+  WhatsAppChat,
   WhatsAppEvents,
   WhatsAppHealth,
   WhatsAppOptions,
@@ -640,6 +642,59 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
       sent.session = this.sessionProfileName;
       this.emit("message.sent", sent);
       return sent;
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
+  }
+
+  // ============================================================================
+  // Chats Query API
+  // ============================================================================
+
+  /**
+   * Retrieves active WhatsApp chats (direct 1-on-1 and groups) sorted by most recent activity.
+   *
+   * If not already connected, automatically establishes or resumes the connection before fetching.
+   *
+   * @param options - Query options including limit (1-100) and chat type filter ("all" | "private" | "group")
+   * @returns Array of WhatsAppChat objects sorted descending by last activity timestamp
+   *
+   * @example
+   * ```typescript
+   * const chats = await wa.getChats({ limit: 5, type: "all" });
+   * const privateChats = await wa.getChats({ limit: 5, type: "private" });
+   * const groupChats = await wa.getChats({ limit: 5, type: "group" });
+   * ```
+   */
+  public async getChats(options?: GetChatsOptions): Promise<WhatsAppChat[]> {
+    const limit = options?.limit !== undefined ? options.limit : 20;
+    const type = options?.type !== undefined ? options.type : "all";
+
+    if (
+      typeof limit !== "number" ||
+      !Number.isInteger(limit) ||
+      !Number.isFinite(limit) ||
+      limit <= 0 ||
+      limit > 100
+    ) {
+      throw new WhatsAppError(
+        "Invalid limit: limit must be a positive integer between 1 and 100",
+        "ERR_INVALID_OPTIONS",
+      );
+    }
+
+    if (type !== "all" && type !== "private" && type !== "group") {
+      throw new WhatsAppError(
+        `Invalid type: "${String(type)}". Expected "all", "private", or "group"`,
+        "ERR_INVALID_OPTIONS",
+      );
+    }
+
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
+      return await this.transport.getChats({ limit, type });
     } finally {
       this.activeSendsCount--;
       this.checkAutoDisconnect();
