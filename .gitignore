@@ -5,6 +5,7 @@ node_modules/
 dist/
 
 # WhatsApp session credentials (HIGHLY SENSITIVE - NEVER COMMIT)
+auth/
 session/
 sessions/
 *.session

@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "whatsapp-msg-client": "latest"
+  }
+}

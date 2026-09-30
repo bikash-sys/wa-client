@@ -1,20 +1,23 @@
 {
   "name": "whatsapp-msg-client",
   "version": "0.1.3",
-  "description": "Simple WhatsApp Web client for Node.js with QR authentication, persistent sessions, messaging, media, and event handling.",
+  "description": "A TypeScript/Node.js WhatsApp client for sending messages, media, receiving messages, managing groups, and building WhatsApp bots with persistent sessions.",
   "keywords": [
     "whatsapp",
+    "whatsapp-api",
+    "whatsapp-bot",
+    "whatsapp-client",
     "whatsapp-web",
     "baileys",
+    "nodejs",
     "messaging",
-    "automation",
-    "bot",
-    "qr-code",
-    "client",
-    "whatsapp-msg-client"
+    "chatbot",
+    "whatsapp-automation",
+    "whatsapp-group",
+    "typescript"
   ],
   "license": "MIT",
-  "author": "",
+  "author": "bikash-sys",
   "repository": {
     "type": "git",
     "url": "https://github.com/bikash-sys/wa-client.git"

@@ -9,6 +9,7 @@ prettier.config.js
 vitest.config.ts
 
 # Sessions and credentials (NEVER INCLUDE)
+auth/
 session/
 sessions/
 *.session
@@ -18,7 +19,13 @@ baileys_auth_info/
 .github/
 .git/
 .gitignore
+.npmignore
 .env*
 *.log
+*.tgz
 coverage/
 .temp/
+
+# Documentation (already included via README.md by npm default)
+CONTRIBUTING.md
+SECURITY.md

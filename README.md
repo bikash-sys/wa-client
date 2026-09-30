@@ -1,530 +1,419 @@
 # whatsapp-msg-client
 
-> Simple, developer-friendly WhatsApp Web client for Node.js with QR authentication, named persistent sessions, messaging, media attachments, and event handling. Built to feel as intuitive as Nodemailer.
+A TypeScript/Node.js WhatsApp client for sending messages, media, receiving messages, managing groups, and building WhatsApp bots with persistent sessions.
 
-[![npm version](https://img.shields.io/badge/version-0.1.2-blue.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/whatsapp-msg-client.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
+[![npm downloads](https://img.shields.io/npm/dm/whatsapp-msg-client.svg)](https://www.npmjs.com/package/whatsapp-msg-client)
+[![License: MIT](https://img.shields.io/github/license/bikash-sys/wa-client.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org)
+[![CI](https://github.com/bikash-sys/wa-client/actions/workflows/ci.yml/badge.svg)](https://github.com/bikash-sys/wa-client/actions/workflows/ci.yml)
 
----
+Built on [Baileys](https://github.com/WhiskeySockets/Baileys). Designed for WhatsApp bots, automation, server alerts, AI assistants, and multi-session applications.
 
-## Important Notice
-
-**whatsapp-msg-client is an unofficial WhatsApp Web client wrapper.**
-It is **not** an official Meta or WhatsApp API, SDK, or product, and is **not affiliated with, maintained, authorized, or endorsed by Meta Platforms, Inc. or WhatsApp LLC**.
-
-This library is designed for legitimate automation, personal notifications, server alerts, internal tools, and customer assistance bots. It does **not** provide tools for spamming, bulk blasts, scraping, contact harvesting, or bypassing WhatsApp restrictions. Always adhere to WhatsApp's Terms of Service and applicable privacy regulations.
-
----
-
-## How It Works
-
-Each WhatsApp account is stored as a named session. Scan the QR code once, give the session a name such as `personal` or `business`, and the credentials are saved locally. Future runs automatically reconnect to that WhatsApp account without requiring another QR scan.
+> **Disclaimer**: This is an unofficial WhatsApp Web client wrapper. It is **not** affiliated with, maintained, authorized, or endorsed by Meta Platforms, Inc. or WhatsApp LLC. Use responsibly and in compliance with [WhatsApp's Terms of Service](https://www.whatsapp.com/legal/terms-of-service).
 
 ---
 
 ## Features
 
-- 🚀 **Nodemailer-like Simplicity**: Clean, promise-based `wa.send()` API.
-- ⚡ **Auto-Connect & Clean Process Exit**: One-shot sends auto-connect with saved credentials and exit naturally without process hangs.
-- 📱 **QR Authentication**: Simple QR code event emission with automatic terminal QR code rendering (`printQRInTerminal: true`).
-- 💾 **Named Persistent Sessions**: Each account is stored separately in `./auth/<session>/` (e.g. `./auth/personal/`, `./auth/business/`).
-- 👥 **Multiple Accounts in One Process**: Run multiple WhatsApp accounts simultaneously without credential crosstalk.
-- 🗂️ **Session Management API**: Create, list, inspect, and remove sessions both statically and via instance methods.
-- 💬 **Simple Messaging**: `wa.send("919876543210", "Hello!")` and `wa.sendMessage()` backwards compatibility.
-- 📎 **Media Attachments**: Send images, videos, audio/voice notes, and documents (PDFs, spreadsheets) via file paths or in-memory `Buffer`s.
-- ↩️ **Native Replies**: Convenient `message.reply("...")` helper with automatic quoting.
-- 🔄 **Smart Reconnection**: Built-in exponential backoff with jitter and customizable retry limits.
-- 🔒 **Security First**: Automatic sanitization of logs preventing credential/private key leaks, restrictive file permissions (`0700`), and path traversal protection.
-- 🔷 **Strict TypeScript**: 100% TypeScript with full type definitions (`.d.ts` and `.d.cts`) and comprehensive TSDoc comments.
+- **Send & receive messages** — text, images, videos, audio, documents
+- **Group messaging** — send to groups by name or JID
+- **Chat listing** — fetch recent private, group, or all chats
+- **QR-code authentication** — scan once, auto-reconnect forever
+- **Persistent sessions** — credentials stored on disk per named session
+- **Multiple sessions** — run independent WhatsApp accounts in one process
+- **Incoming message events** — listen and reply with `msg.reply()`
+- **Auto-reconnect** — exponential backoff with jitter
+- **Health & status APIs** — `isConnected()`, `isReady()`, `health()`
+- **ESM + CommonJS** — dual-format build with full TypeScript types
+- **Session management** — create, list, inspect, and remove sessions
 
 ---
 
-## Installation
+## Quick Start
+
+### Install
 
 ```bash
 npm install whatsapp-msg-client
 ```
 
-*(Requires Node.js 18.0.0 or higher)*
+Requires Node.js ≥ 18.0.0.
 
----
-
-## Basic Usage
+### Send a Message
 
 ```typescript
 import { WhatsApp } from "whatsapp-msg-client";
 
 const wa = new WhatsApp({
-  session: "personal",
-  printQRInTerminal: true, // Automatically prints the QR code in your terminal
-});
-
-wa.on("message", async (msg) => {
-  console.log(`Received message from ${msg.from}: ${msg.text}`);
-
-  if (msg.text === "hi") {
-    await msg.reply("Hello!");
-  }
+  session: "my-bot",
+  printQRInTerminal: true,
 });
 
 await wa.connect();
 
-// Send a message (always include country code!)
-await wa.send("919340748552", "Hello from my personal WhatsApp!");
+await wa.send("919876543210", "Hello from my WhatsApp bot!");
 ```
+
+1. Install the package.
+2. Create a client with a session name.
+3. Scan the QR code in your terminal (first run only).
+4. Send a message. Future runs reconnect automatically.
 
 ---
 
-## Sessions
+## API Reference
 
-Each session represents an independent WhatsApp profile stored on disk under `./auth/<session-name>/`.
-
-### Default Session
-If no session name is provided, `whatsapp-msg-client` defaults to `"default"` and stores credentials in `./auth/default/`:
+### Constructor
 
 ```typescript
-const wa = new WhatsApp(); // Uses ./auth/default/
+const wa = new WhatsApp(options?);
 ```
 
-### Named Sessions
-Give your session a name to organize profiles:
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `session` | `string` | `"default"` | Named session profile for credential storage |
+| `authDir` | `string` | `"./auth"` | Root directory for session folders |
+| `printQR` | `boolean` | `false` | Print QR code in terminal |
+| `printQRInTerminal` | `boolean` | `false` | Alias for `printQR` |
+| `logger` | `Logger \| LogLevel \| boolean` | silent | Custom logger, log level, or `false` |
+| `reconnect` | `boolean` | `true` | Automatic reconnection on disconnect |
+| `maxReconnectAttempts` | `number` | `5` | Max consecutive reconnection attempts |
+| `reconnectIntervalMs` | `number` | `2000` | Base interval between reconnect attempts (ms) |
+| `keepAlive` | `boolean` | `false` | Keep connection alive after one-shot sends |
+| `transport` | `WhatsAppTransport` | — | Custom transport for testing/mocking |
+
+### connect()
 
 ```typescript
-const personal = new WhatsApp({ session: "personal" }); // ./auth/personal/
-const business = new WhatsApp({ session: "business" }); // ./auth/business/
+await wa.connect();
 ```
 
-### Custom Auth Root Directory
-You can customize the parent directory where session folders are placed:
+Establishes the WhatsApp connection. Shows a QR code on first use or reconnects using saved credentials.
+
+### send()
 
 ```typescript
-const wa = new WhatsApp({
-  authDir: "./my-whatsapp-auth",
-  session: "business",
-});
-// Credentials stored in ./my-whatsapp-auth/business/
+// String arguments
+await wa.send("919876543210", "Hello!");
+
+// Options object
+await wa.send({ to: "+91 98765-43210", text: "Hello!" });
 ```
 
-> **Security Note**: Session names are strictly validated to prevent filesystem traversal (e.g. `../` or absolute paths are rejected).
+Phone numbers are automatically normalized (country code required, formatting is flexible).
 
----
-
-## Multiple WhatsApp Accounts
-
-Multiple sessions can run at the same time in a single Node.js application:
+### sendToGroup()
 
 ```typescript
-import { WhatsApp } from "whatsapp-msg-client";
+// By group name (exact, case-sensitive match)
+await wa.sendToGroup("Project Team", "Hello team!");
 
-const personal = new WhatsApp({
-  session: "personal",
-  printQRInTerminal: true,
-});
-
-const business = new WhatsApp({
-  session: "business",
-  printQRInTerminal: true,
-});
-
-await personal.connect();
-await business.connect();
-
-await personal.send("919340748552", "Hello from personal!");
-await business.send("919340748552", "Hello from business!");
-```
-
-Messages are strictly sent from the WhatsApp account associated with that specific session instance.
-
----
-
-## Session Management
-
-`whatsapp-msg-client` includes built-in APIs to create, list, check, and delete sessions.
-
-### Listing Sessions
-Inspect all sessions saved on disk or active in memory:
-
-```typescript
-const sessions = await WhatsApp.listSessions();
-console.log(sessions);
-```
-
-Returns clean, safe information without exposing sensitive credentials or keys:
-
-```json
-[
-  {
-    "name": "business",
-    "connected": true,
-    "state": "connected",
-    "authDir": "/path/to/project/auth",
-    "sessionPath": "/path/to/project/auth/business",
-    "hasCredentials": true
-  },
-  {
-    "name": "personal",
-    "connected": false,
-    "state": "disconnected",
-    "authDir": "/path/to/project/auth",
-    "sessionPath": "/path/to/project/auth/personal",
-    "hasCredentials": true
-  }
-]
-```
-
-### Checking If a Session Exists
-```typescript
-if (WhatsApp.hasSession("business")) {
-  console.log("Business session exists on disk or in memory");
-}
-```
-
-### Creating Sessions
-```typescript
-const client = await WhatsApp.createSession("customer-support", {
-  printQRInTerminal: true,
-});
-await client.connect();
-```
-
-### Removing Sessions
-When you remove a session:
-1. The active connection is disconnected gracefully.
-2. Reconnection timers are cancelled.
-3. The session is removed from memory.
-4. The authentication directory (`./auth/<name>/`) is deleted from disk.
-5. Other sessions remain completely untouched.
-
-```typescript
-// Static removal
-await WhatsApp.removeSession("business");
-
-// Or from an instance
-await wa.removeSession();
-```
-
----
-
-## Persistent Authentication
-
-- **First Launch**: Shows a QR code in the terminal (or emits the `"qr"` event).
-- **Subsequent Launches**: Reconnects instantly using stored credentials in `./auth/<name>/` without showing a QR code.
-- **Corrupted Sessions**: If session files are damaged or corrupted, `whatsapp-msg-client` automatically resets the corrupted state gracefully rather than crashing.
-
----
-
-## Sending Messages
-
-### Text Messages
-Use the primary `send()` method (or its backwards-compatible alias `sendMessage()`):
-
-```typescript
-// 1. Shorthand: (recipient, text)
-await wa.send("919876543210", "Hello there!");
-
-// 2. Options object syntax
-await wa.send({
-  to: "+91 98765-43210", // Automatically normalized
-  text: "Hello from options object!",
-});
-```
-
-### Group Messages (`sendToGroup`)
-Send a message directly to a WhatsApp group using either the **group name** or the **group JID**:
-
-```typescript
-// 1. Send using the exact group name
-await wa.sendToGroup("Project Team", "Hello team, standup in 10 minutes!");
-
-// 2. Send using the group JID (@g.us)
+// By group JID
 await wa.sendToGroup("120363414422062021@g.us", "Hello group!");
 
-// 3. Send using an options object (with quote/reply support)
-await wa.sendToGroup("Project Team", {
-  text: "Review completed!",
-});
+// With options object
+await wa.sendToGroup("Project Team", { text: "Meeting at 3pm" });
 ```
 
-- **Group Name Resolution**: Automatically resolves against your participating groups without needing manual JID lookups.
-- **Safety Checks**: If a group name is not found, throws `Group not found: <name>`. If multiple groups share the same name, throws `Multiple groups found with name: <name>. Use the group JID instead.` to avoid accidental broadcasts.
-- **Full Lifecycle Support**: Works seamlessly with persistent sessions, explicit connections, and one-shot sends.
+- If the group name is not found, throws: `Group not found: <name>`
+- If multiple groups share the same name, throws: `Multiple groups found with name: <name>. Use the group JID instead.`
 
-### Images
-Send images from local files or in-memory `Buffer`s:
+### sendImage()
 
 ```typescript
-// Local file path
-await wa.sendImage("919876543210", "./assets/photo.jpg", "Check this photo!");
+// File path
+await wa.sendImage("919876543210", "./photo.jpg", "Check this out!");
 
-// In-memory Buffer
-await wa.sendImage({
-  to: "919876543210",
-  data: imageBuffer,
-  caption: "Profile picture",
-});
+// Buffer
+await wa.sendImage({ to: "919876543210", data: buffer, caption: "Photo" });
 ```
 
-### Videos
+### sendVideo()
+
 ```typescript
-await wa.sendVideo("919876543210", "./assets/video.mp4", "Watch this clip");
+await wa.sendVideo("919876543210", "./clip.mp4", "Watch this");
 ```
 
-### Audio / Voice Notes
+### sendAudio()
+
 ```typescript
 // Standard audio
-await wa.sendAudio("919876543210", "./assets/song.mp3");
+await wa.sendAudio("919876543210", "./song.mp3");
 
-// Recorded voice note (Push-To-Talk)
-await wa.sendAudio("919876543210", "./assets/voice.mp3", true);
+// Voice note (push-to-talk)
+await wa.sendAudio("919876543210", "./voice.mp3", true);
 ```
 
-### Documents (PDF, Excel, Zip, etc.)
-```typescript
-// Local file path
-await wa.sendDocument("919876543210", "./reports/invoice.pdf", "Invoice #1042");
+### sendDocument()
 
-// In-memory Buffer
+```typescript
+// File path
+await wa.sendDocument("919876543210", "./invoice.pdf", "Invoice #1042");
+
+// Buffer
 await wa.sendDocument({
   to: "919876543210",
   data: pdfBuffer,
   filename: "invoice.pdf",
-  mimetype: "application/pdf",
-  caption: "Your invoice is attached",
+  caption: "Your invoice",
 });
 ```
+
+### getChats()
+
+```typescript
+const chats = await wa.getChats({ limit: 5, type: "all" });
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `limit` | `number` | `20` | Max chats to return (1–100) |
+| `type` | `"all" \| "private" \| "group"` | `"all"` | Filter by chat type |
+
+Returns an array of `WhatsAppChat` objects sorted by most recent activity:
+
+```typescript
+interface WhatsAppChat {
+  id: string;        // "919876543210@s.whatsapp.net" or "120363...@g.us"
+  name: string;      // Contact name or group subject
+  type: "private" | "group";
+  lastMessage?: string;
+  timestamp?: number; // Unix timestamp
+}
+```
+
+```typescript
+// Private chats only
+const privates = await wa.getChats({ limit: 10, type: "private" });
+
+// Group chats only
+const groups = await wa.getChats({ limit: 10, type: "group" });
+```
+
+### isConnected()
+
+```typescript
+wa.isConnected(); // true when the WebSocket connection is open
+```
+
+### isReady()
+
+```typescript
+wa.isReady(); // true when authenticated and ready for messaging
+```
+
+### isReconnecting()
+
+```typescript
+wa.isReconnecting(); // true while attempting automatic reconnection
+```
+
+### getStatus()
+
+```typescript
+const status = wa.getStatus();
+// {
+//   session: "my-bot",
+//   connected: true,
+//   ready: true,
+//   reconnecting: false,
+//   state: "connected"
+// }
+```
+
+### health()
+
+```typescript
+const h = wa.health();
+// { ...status, healthy: true }
+```
+
+`healthy` is `true` only when `connected && ready && !reconnecting`.
 
 ---
 
 ## Receiving Messages
 
-Listen to the `"message"` event:
-
 ```typescript
 wa.on("message", async (msg) => {
-  console.log(`Session: ${msg.session}`);   // e.g. "personal"
-  console.log(`From: ${msg.from}`);         // Phone number or group JID
-  console.log(`Author: ${msg.sender}`);     // Individual participant in groups
-  console.log(`Text: ${msg.text}`);         // Message text content
-  console.log(`Is Group: ${msg.isGroup}`);
-  console.log(`Is From Me: ${msg.isFromMe}`);
+  console.log(`From: ${msg.from}`);
+  console.log(`Text: ${msg.text}`);
+  console.log(`Group: ${msg.isGroup}`);
 
-  // Built-in reply helper with automatic quoting
   if (msg.text === "ping") {
     await msg.reply("pong 🏓");
   }
 });
 ```
 
----
+### IncomingMessage
 
-## Get Chats
-
-Fetch your most recently active WhatsApp conversations with a clean, typed API:
-
-```javascript
-const chats = await wa.getChats({
-  limit: 5,
-  type: "all",
-});
-```
-
-### Options
-
-- `limit` *(number, optional)*: Maximum number of chats to return (positive integer, 1 to 100). Defaults to `20`.
-- `type` *("all" | "private" | "group", optional)*: Filter chats by conversation type. Defaults to `"all"`.
-  - `"all"`: Returns both direct 1-on-1 private chats and group chats.
-  - `"private"`: Returns only direct 1-on-1 individual chats (`@s.whatsapp.net`).
-  - `"group"`: Returns only group chats (`@g.us`).
-
-### Filter by Chat Type
-
-```javascript
-// Get top 5 most recent private chats
-const privateChats = await wa.getChats({ limit: 5, type: "private" });
-
-// Get top 5 most recent group chats
-const groupChats = await wa.getChats({ limit: 5, type: "group" });
-```
-
-### Activity Ordering & Safe Public Metadata
-
-- **Ordering**: Chats are sorted descending by their most recent known activity/message timestamp. Chats without known timestamps appear after chats with timestamps.
-- **Group Support**: Group subject/name metadata is resolved automatically without performing unnecessary network queries in a loop.
-- **Privacy & Security**: Results contain only safe public metadata (`id`, `name`, `type`, `lastMessage`, `timestamp`) and never leak encryption keys, signal session state, or credentials.
-
-Example response:
-
-```json
-[
-  {
-    "id": "919876543210@s.whatsapp.net",
-    "name": "Rahul",
-    "type": "private",
-    "lastMessage": "Hey bro",
-    "timestamp": 1759123400
-  },
-  {
-    "id": "120363123456789@g.us",
-    "name": "VAJRAX Robotics",
-    "type": "group",
-    "lastMessage": "Meeting at 6",
-    "timestamp": 1759123000
-  }
-]
-```
+| Property | Type | Description |
+|---|---|---|
+| `id` | `string` | Unique message ID |
+| `from` | `string` | Sender phone number or group JID |
+| `sender` | `string` | Individual sender (participant in groups) |
+| `text` | `string?` | Message text content |
+| `timestamp` | `number` | Unix timestamp (ms) |
+| `isGroup` | `boolean` | Whether the message is from a group |
+| `isFromMe` | `boolean` | Whether sent by the authenticated account |
+| `session` | `string?` | Session profile name |
+| `reply(text)` | `function` | Reply with automatic quoting |
 
 ---
 
 ## Events
 
-| Event | Arguments | Description |
+| Event | Payload | Description |
 |---|---|---|
-| `qr` | `(qr: string)` | Emitted when a new QR code is ready for scanning. |
-| `connected` | `()` | Emitted when the low-level WebSocket connection is established. |
-| `ready` | `()` | Emitted when authenticated and fully ready to send/receive messages. |
-| `disconnected` | `(reason?: string)` | Emitted when disconnected from WhatsApp. |
-| `reconnecting` | `(attempt: number, maxAttempts: number)` | Emitted when an automatic reconnect attempt is triggered. |
-| `message` | `(message: IncomingMessage)` | Emitted when an incoming message is received (includes `.session`). |
-| `message.sent` | `(message: SentMessage)` | Emitted after a message is sent successfully (includes `.session`). |
-| `error` | `(error: Error)` | Emitted when a connection or protocol error occurs. |
-| `logged_out` | `()` | Emitted when the session is logged out. |
-| `session.removed` | `(sessionName: string)` | Emitted when a session is removed. |
+| `qr` | `(qr: string)` | New QR code ready for scanning |
+| `connected` | `()` | WebSocket connection established |
+| `ready` | `()` | Authenticated and ready to send/receive |
+| `disconnected` | `(reason?: string)` | Connection closed |
+| `reconnecting` | `(attempt, maxAttempts)` | Reconnection attempt triggered |
+| `message` | `(message: IncomingMessage)` | Incoming message received |
+| `message.sent` | `(message: SentMessage)` | Message sent successfully |
+| `error` | `(error: Error)` | Connection or protocol error |
+| `logged_out` | `()` | Session logged out |
+| `session.removed` | `(sessionName: string)` | Session removed and cleaned up |
 
 ---
 
-## Health & Connection Status
+## Sessions
 
-`whatsapp-msg-client` exposes lightweight, side-effect-free methods to inspect connection state and perform health checks for observability and uptime monitoring:
+Each session is an independent WhatsApp profile stored on disk under `./auth/<session-name>/`.
 
 ```typescript
-// Quick boolean status checks
-if (wa.isConnected()) {
-  console.log("WhatsApp socket is connected");
-}
+// Default session (./auth/default/)
+const wa = new WhatsApp();
 
-if (wa.isReady()) {
-  console.log("Client is authenticated and ready for messaging");
-}
+// Named sessions
+const personal = new WhatsApp({ session: "personal" });
+const business = new WhatsApp({ session: "business" });
 
-if (wa.isReconnecting()) {
-  console.log("Currently attempting automatic reconnection...");
-}
-
-// Comprehensive status summary
-const status = wa.getStatus();
-console.log(status);
-// {
-//   session: "business",
-//   connected: true,
-//   ready: true,
-//   reconnecting: false,
-//   state: "connected"
-// }
-
-// Production health check
-const health = wa.health();
-if (health.healthy) {
-  console.log("WhatsApp client is healthy and ready to use");
-}
+// Custom auth directory
+const wa = new WhatsApp({ authDir: "./my-auth", session: "bot" });
 ```
 
-### Status Properties & Semantics
+### Multiple Sessions
 
-- **`connected`**: `true` when the underlying transport socket connection is established.
-- **`ready`**: `true` when the client is authenticated and ready to send and receive messages.
-- **`reconnecting`**: `true` only while actively attempting to recover from a temporary disconnection.
-- **`healthy`**: `true` only when the client is currently usable for messaging (`connected && ready && !reconnecting`).
-- **`state`**: Current lifecycle state (`"disconnected" | "connecting" | "qr" | "connected" | "reconnecting" | "logged_out"`).
-
-### Health & Status Types
+Run multiple WhatsApp accounts simultaneously:
 
 ```typescript
-interface WhatsAppStatus {
-  session: string;
-  connected: boolean;
-  ready: boolean;
-  reconnecting: boolean;
-  state: ConnectionState;
-}
+const personal = new WhatsApp({ session: "personal", printQRInTerminal: true });
+const business = new WhatsApp({ session: "business", printQRInTerminal: true });
 
-interface WhatsAppHealth extends WhatsAppStatus {
-  healthy: boolean;
-}
+await Promise.all([personal.connect(), business.connect()]);
+
+await personal.send("919876543210", "From personal");
+await business.send("919876543210", "From business");
+```
+
+### Session Management
+
+```typescript
+// List all sessions
+const sessions = await WhatsApp.listSessions();
+
+// Check if a session exists
+if (WhatsApp.hasSession("business")) { /* ... */ }
+
+// Create a new session
+const client = await WhatsApp.createSession("support", { printQRInTerminal: true });
+
+// Remove a session (disconnects, clears credentials)
+await WhatsApp.removeSession("business");
+// Or from an instance:
+await wa.removeSession();
 ```
 
 ---
 
-## Configuration Options
+## Building an AI Bot
+
+`whatsapp-msg-client` provides the WhatsApp messaging layer. You can integrate any AI provider in your application:
 
 ```typescript
-interface WhatsAppOptions {
-  /** Named session profile (e.g. "personal", "business"). Defaults to "default" */
-  session?: string;
+import { WhatsApp } from "whatsapp-msg-client";
 
-  /** Root directory for session credential storage. Defaults to "./auth" */
-  authDir?: string;
+const wa = new WhatsApp({
+  session: "ai-bot",
+  printQRInTerminal: true,
+  keepAlive: true,
+});
 
-  /** Render QR code in terminal automatically. Defaults to false */
-  printQR?: boolean;
+wa.on("message", async (msg) => {
+  if (msg.isFromMe) return;
 
-  /** Alias for printQR */
-  printQRInTerminal?: boolean;
+  // Call your AI provider (OpenAI, Gemini, Claude, etc.)
+  const aiResponse = await yourAIProvider.chat(msg.text);
 
-  /** Custom Logger, LogLevel, or false. Defaults to silent */
-  logger?: Logger | LogLevel | boolean;
+  await msg.reply(aiResponse);
+});
 
-  /** Enable automatic reconnection. Defaults to true */
-  reconnect?: boolean;
-
-  /** Maximum reconnect attempts before giving up. Defaults to 5 */
-  maxReconnectAttempts?: number;
-
-  /** Base interval between reconnect attempts in milliseconds. Defaults to 2000 */
-  reconnectIntervalMs?: number;
-
-  /** Keep implicit auto-connect socket open instead of closing after send. Defaults to false */
-  keepAlive?: boolean;
-
-  /** Custom transport implementation for testing / mocking */
-  transport?: WhatsAppTransport;
-}
+await wa.connect();
 ```
+
+The package does **not** include or depend on any AI provider. Your application controls the AI integration, model selection, and API keys.
 
 ---
 
 ## Security
 
-Session credentials grant full access to send and receive messages on your WhatsApp account.
-- **Git Ignore**: Always add `auth/` to your `.gitignore`.
-- **Restrict File Permissions**: Sessions are created with owner-only access (`0700`).
-- **Redacted Logging**: Sensitive credentials, pre-keys, and private keys are never included in logs or error messages.
-- **Revocation**: If a device is lost or compromised, unlink the session immediately from your phone under **WhatsApp → Settings → Linked Devices**.
+### Session Credential Protection
+
+Session credentials grant full access to send and receive messages on your WhatsApp account. Treat them like private keys.
+
+- **Never commit credentials** — `auth/` is in `.gitignore` by default
+- **Restricted permissions** — session directories are created with `0700` (owner-only)
+- **Redacted logging** — credentials, pre-keys, and private keys are never logged
+- **Path traversal protection** — session names are validated to prevent filesystem escapes
+- **Media size limits** — 100 MB enforcement on media attachments
+- **Filename sanitization** — document filenames are sanitized via `path.basename()`
+- **Session revocation** — if compromised, unlink the device from WhatsApp → Settings → Linked Devices
+
+For vulnerability reporting, see [SECURITY.md](SECURITY.md).
 
 ---
 
-## Development & Verification
+## Examples
+
+See the [`examples/`](examples/) directory:
+
+| Example | Description |
+|---|---|
+| [`basic/`](examples/basic/) | Connect, authenticate, and send a message |
+| [`receive-reply/`](examples/receive-reply/) | Listen for messages and auto-reply |
+| [`groups/`](examples/groups/) | Send messages to groups and list group chats |
+| [`media/`](examples/media/) | Send images, documents, audio, and video |
+| [`multi-session/`](examples/multi-session/) | Run multiple WhatsApp accounts simultaneously |
 
 ```bash
-# Run tests
-npm test
-
-# Check TypeScript types
-npm run typecheck
-
-# Lint codebase
-npm run lint
-
-# Format with Prettier
-npm run format
-
-# Build distribution bundle
-npm run build
+# Run an example
+cd examples/basic && npm install && node index.js
 ```
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/bikash-sys/wa-client.git
+cd wa-client
+npm install
+
+npm test              # Run tests
+npm run typecheck     # TypeScript type checking
+npm run lint          # ESLint
+npm run format        # Prettier
+npm run build         # Build dist/
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
 ---
 
 ## License
 
 [MIT](LICENSE) © 2026 whatsapp-msg-client Contributors
-
