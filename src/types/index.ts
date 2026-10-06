@@ -281,14 +281,14 @@ export type DocumentMessageOptions = MediaBaseOptions &
   );
 
 /**
- * Representation of an incoming WhatsApp message.
+ * Representation of a WhatsApp message retrieved from chat history or messaging events.
  */
-export interface IncomingMessage {
+export interface WhatsAppMessage {
   /** Unique message identifier */
   id: string;
   /**
    * The conversation identifier where the message was sent.
-   * If a direct message: phone number.
+   * If a direct message: phone number or JID.
    * If a group message: group JID (e.g. 12345-67890@g.us).
    */
   from: string;
@@ -308,8 +308,16 @@ export interface IncomingMessage {
   isFromMe: boolean;
   /** Optional raw underlying transport message object */
   raw?: unknown;
-  /** Session profile name that received this message */
+  /** Session profile name that received or processed this message */
   session?: string;
+  /** Message key object passed directly to message operations like pinMessage/unpinMessage */
+  key: WhatsAppMessageKey;
+}
+
+/**
+ * Representation of an incoming WhatsApp message with auto-reply helper.
+ */
+export interface IncomingMessage extends WhatsAppMessage {
   /**
    * Convenient helper to reply directly to this message.
    * Automatically quotes the incoming message and addresses the reply to the sender/group.
@@ -342,3 +350,25 @@ export type WhatsAppEvents = {
   /** Emitted when a session is removed and cleaned up */
   "session.removed": (sessionName: string) => void;
 };
+
+/**
+ * Supported message pinning durations in days.
+ * - 1: 24 hours (86,400 seconds)
+ * - 7: 7 days (604,800 seconds)
+ * - 30: 30 days (2,592,000 seconds)
+ */
+export type PinDuration = 1 | 7 | 30;
+
+/**
+ * Message key identification used to reference specific messages (e.g. for pinning or unpinning).
+ */
+export interface WhatsAppMessageKey {
+  /** Target chat JID or phone number */
+  remoteJid: string;
+  /** Unique message identifier */
+  id: string;
+  /** Participant JID (required for group messages authored by another participant) */
+  participant?: string;
+  /** Whether the message was sent by the current user */
+  fromMe?: boolean;
+}

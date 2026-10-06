@@ -4,6 +4,8 @@ import type {
   IncomingMessage,
   SentMessage,
   WhatsAppChat,
+  WhatsAppMessage,
+  WhatsAppMessageKey,
 } from "../types/index.js";
 import type { TypedEventEmitter } from "../events/event-emitter.js";
 
@@ -55,5 +57,8 @@ export interface WhatsAppTransport extends TypedEventEmitter<TransportEvents> {
     options?: TransportMediaOptions,
   ): Promise<SentMessage>;
   getChats(options?: GetChatsOptions): Promise<WhatsAppChat[]>;
+  getMessages(chatJid: string, limit?: number): Promise<WhatsAppMessage[]>;
+  pinMessage(key: WhatsAppMessageKey, durationInSeconds: number): Promise<void>;
+  unpinMessage(key: WhatsAppMessageKey): Promise<void>;
   getRawClient<T = unknown>(): T | undefined;
 }

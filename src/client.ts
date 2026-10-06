@@ -7,6 +7,7 @@ import { SessionStore, validateSessionName, assertSafeSessionPath } from "./auth
 import { DEFAULT_CONFIG } from "./config.js";
 import { WhatsAppError, ConnectionError } from "./errors/errors.js";
 import { resolveLogger, SilentLogger, type Logger } from "./utils/logger.js";
+import { toWhatsAppJid } from "./utils/phone.js";
 import type { WhatsAppTransport } from "./transport/transport.interface.js";
 import type {
   AudioMessageOptions,
@@ -15,12 +16,15 @@ import type {
   GetChatsOptions,
   ImageMessageOptions,
   MessageOptions,
+  PinDuration,
   SentMessage,
   SessionInfo,
   VideoMessageOptions,
   WhatsAppChat,
   WhatsAppEvents,
   WhatsAppHealth,
+  WhatsAppMessage,
+  WhatsAppMessageKey,
   WhatsAppOptions,
   WhatsAppStatus,
 } from "./types/index.js";
@@ -782,6 +786,125 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
   }
 
   /**
+   * Fetches historical messages for a specified chat.
+   *
+   * @param chatJid - Recipient phone number (e.g. "918240892552") or chat JID (e.g. "918240892552@s.whatsapp.net" or "120363414422062021@g.us")
+   * @param limit - Maximum number of messages to return (positive integer between 1 and 1000). Defaults to 20.
+   *
+   * @example
+   * ```typescript
+   * const messages = await wa.getMessages("918240892552@s.whatsapp.net", 100);
+   * ```
+   */
+  public async getMessages(chatJid: string, limit?: number): Promise<WhatsAppMessage[]> {
+    if (typeof chatJid !== "string" || !chatJid.trim()) {
+      throw new WhatsAppError(
+        "Invalid chatJid: chatJid must be a non-empty string",
+        "ERR_INVALID_ARGUMENT",
+      );
+    }
+
+    let normalizedJid: string;
+    try {
+      normalizedJid = toWhatsAppJid(chatJid.trim());
+    } catch (err) {
+      throw new WhatsAppError(
+        `Invalid chatJid: ${err instanceof Error ? err.message : String(err)}`,
+        "ERR_INVALID_ARGUMENT",
+        err,
+      );
+    }
+
+    const limitVal = limit !== undefined ? limit : 20;
+    if (
+      typeof limitVal !== "number" ||
+      !Number.isInteger(limitVal) ||
+      !Number.isFinite(limitVal) ||
+      limitVal <= 0 ||
+      limitVal > 1000
+    ) {
+      throw new WhatsAppError(
+        "Invalid limit: limit must be a positive integer between 1 and 1000",
+        "ERR_INVALID_OPTIONS",
+      );
+    }
+
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
+      return await this.transport.getMessages(normalizedJid, limitVal);
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
+  }
+
+  /**
+   * Pins a WhatsApp message for a specified duration in days.
+   *
+   * Supported durations:
+   * - 1 day (86,400 seconds)
+   * - 7 days (604,800 seconds)
+   * - 30 days (2,592,000 seconds)
+   *
+   * If `duration` is omitted, defaults to 30 days.
+   *
+   * @param message - Message key object identifying the message (`remoteJid`, `id`, optional `participant`, optional `fromMe`)
+   * @param duration - Pin duration in days (1, 7, or 30). Defaults to 30.
+   *
+   * @example
+   * ```typescript
+   * const messageKey = {
+   *   remoteJid: "120363414422062021@g.us",
+   *   id: "MESSAGE_ID",
+   *   participant: "USER_JID"
+   * };
+   *
+   * // Pin for default 30 days
+   * await wa.pinMessage(messageKey);
+   *
+   * // Pin for 7 days
+   * await wa.pinMessage(messageKey, 7);
+   * ```
+   */
+  public async pinMessage(message: WhatsAppMessageKey, duration: PinDuration = 30): Promise<void> {
+    validateMessageKey(message);
+    const durationInSeconds = validateAndMapPinDuration(duration);
+
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
+      await this.transport.pinMessage(message, durationInSeconds);
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
+  }
+
+  /**
+   * Unpins a WhatsApp message.
+   *
+   * @param message - Message key object identifying the message (`remoteJid`, `id`, optional `participant`, optional `fromMe`)
+   *
+   * @example
+   * ```typescript
+   * await wa.unpinMessage(messageKey);
+   * ```
+   */
+  public async unpinMessage(message: WhatsAppMessageKey): Promise<void> {
+    validateMessageKey(message);
+
+    this.activeSendsCount++;
+    try {
+      await this.ensureConnected();
+      await this.transport.unpinMessage(message);
+    } finally {
+      this.activeSendsCount--;
+      this.checkAutoDisconnect();
+    }
+  }
+
+  /**
    * Checks if an implicitly connected one-shot send should gracefully close the connection
    * so the Node.js event loop can exit naturally without hanging.
    */
@@ -1060,4 +1183,42 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
       this.emit("error", err);
     });
   }
+}
+
+const PIN_DURATION_MAP: Record<PinDuration, number> = {
+  1: 86400,
+  7: 604800,
+  30: 2592000,
+};
+
+function validateMessageKey(key: unknown): asserts key is WhatsAppMessageKey {
+  if (!key || typeof key !== "object") {
+    throw new WhatsAppError(
+      "Invalid message key: message key must be a valid object",
+      "ERR_INVALID_ARGUMENT",
+    );
+  }
+  const k = key as Record<string, unknown>;
+  if (typeof k["remoteJid"] !== "string" || !k["remoteJid"].trim()) {
+    throw new WhatsAppError(
+      "Invalid message key: remoteJid must be a non-empty string",
+      "ERR_INVALID_ARGUMENT",
+    );
+  }
+  if (typeof k["id"] !== "string" || !k["id"].trim()) {
+    throw new WhatsAppError(
+      "Invalid message key: id must be a non-empty string",
+      "ERR_INVALID_ARGUMENT",
+    );
+  }
+}
+
+function validateAndMapPinDuration(duration: unknown = 30): number {
+  if (duration !== 1 && duration !== 7 && duration !== 30) {
+    throw new WhatsAppError(
+      `Invalid pin duration: ${String(duration)}. Supported durations are 1, 7, or 30 days.`,
+      "ERR_INVALID_ARGUMENT",
+    );
+  }
+  return PIN_DURATION_MAP[duration as PinDuration];
 }

@@ -55,6 +55,11 @@ class MockTransport extends TypedEventEmitter<TransportEvents> implements WhatsA
     return this.storedChats;
   });
 
+  public getMessages = vi.fn().mockResolvedValue([]);
+  public pinMessage = vi.fn().mockResolvedValue(undefined);
+
+  public unpinMessage = vi.fn().mockResolvedValue(undefined);
+
   public getRawClient<T = unknown>(): T | undefined {
     return this.mockSocket as unknown as T;
   }

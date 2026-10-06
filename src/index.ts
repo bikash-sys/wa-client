@@ -58,6 +58,8 @@ export type {
   WhatsAppHealth,
   WhatsAppChat,
   GetChatsOptions,
+  PinDuration,
+  WhatsAppMessageKey,
   ConnectionState,
   SentMessage,
   MessageOptions,
@@ -67,5 +69,6 @@ export type {
   AudioMessageOptions,
   DocumentMessageOptions,
   IncomingMessage,
+  WhatsAppMessage,
   WhatsAppEvents,
 } from "./types/index.js";

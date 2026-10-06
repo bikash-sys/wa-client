@@ -6,6 +6,7 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   type WASocket,
   type WAMessage,
+  type WAMessageKey,
   type AnyMessageContent,
   type proto,
   type Chat,
@@ -17,7 +18,7 @@ import { SessionStore } from "../auth/session-store.js";
 import { WhatsAppError, ConnectionError, MessageError } from "../errors/errors.js";
 import { createPinoLogger, type Logger } from "../utils/logger.js";
 import { patchLibsignalLogs } from "../utils/patch-libsignal.js";
-import { jidToPhoneNumber } from "../utils/phone.js";
+import { jidToPhoneNumber, toWhatsAppJid } from "../utils/phone.js";
 import type {
   ConnectionState,
   GetChatsOptions,
@@ -25,7 +26,10 @@ import type {
   MessageOptions,
   SentMessage,
   WhatsAppChat,
+  WhatsAppMessage,
+  WhatsAppMessageKey,
 } from "../types/index.js";
+
 import type {
   MediaPayload,
   TransportEvents,
@@ -123,6 +127,7 @@ export class BaileysTransport
   private chats = new Map<string, CachedChat>();
   private contacts = new Map<string, CachedContact>();
   private groupMetadataCache = new Map<string, CachedGroup>();
+  private messagesStore = new Map<string, Map<string, WAMessage>>();
 
   constructor(options: {
     sessionPath: string;
@@ -272,6 +277,7 @@ export class BaileysTransport
         if (messages) {
           for (const msg of messages) {
             if (msg && msg.key?.remoteJid) {
+              this.storeMessage(msg);
               this.updateChatFromMessage(msg);
             }
           }
@@ -376,8 +382,10 @@ export class BaileysTransport
 
         for (const wam of messages) {
           if (wam.key?.remoteJid) {
+            this.storeMessage(wam);
             this.updateChatFromMessage(wam);
           }
+
           if (!wam.message) continue;
 
           // Prevent processing protocol sync stubs
@@ -520,10 +528,40 @@ export class BaileysTransport
             }
           }
         }
+        if (parsed.messages && typeof parsed.messages === "object") {
+          for (const [jid, msgs] of Object.entries(parsed.messages)) {
+            if (Array.isArray(msgs)) {
+              let map = this.messagesStore.get(jid);
+              if (!map) {
+                map = new Map<string, WAMessage>();
+                this.messagesStore.set(jid, map);
+              }
+              for (const m of msgs as WAMessage[]) {
+                if (m && m.key?.id) {
+                  map.set(m.key.id, m);
+                }
+              }
+            }
+          }
+        }
       }
     } catch (err) {
       this.logger.debug("Failed to load cached chats from disk:", err);
     }
+  }
+
+  private storeMessage(wam: WAMessage | null | undefined): void {
+    if (!wam || typeof wam !== "object") return;
+    const remoteJid = wam.key?.remoteJid;
+    const msgId = wam.key?.id;
+    if (!remoteJid || typeof remoteJid !== "string" || !msgId) return;
+
+    let chatMap = this.messagesStore.get(remoteJid);
+    if (!chatMap) {
+      chatMap = new Map<string, WAMessage>();
+      this.messagesStore.set(remoteJid, chatMap);
+    }
+    chatMap.set(msgId, wam);
   }
 
   private saveChatsToDisk(): void {
@@ -533,11 +571,17 @@ export class BaileysTransport
         fs.mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
       }
 
+      const messagesObj: Record<string, WAMessage[]> = {};
+      for (const [jid, map] of this.messagesStore.entries()) {
+        messagesObj[jid] = Array.from(map.values());
+      }
+
       const filePath = path.join(sessionDir, "chats-store.json");
       const data = {
         chats: Array.from(this.chats.values()),
         contacts: Object.fromEntries(this.contacts.entries()),
         groups: Object.fromEntries(this.groupMetadataCache.entries()),
+        messages: messagesObj,
       };
       fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
     } catch (err) {
@@ -602,6 +646,58 @@ export class BaileysTransport
       }
       return 0;
     });
+
+    return results.slice(0, limit);
+  }
+
+  /**
+   * Fetches historical messages for a chat.
+   */
+  public async getMessages(chatJid: string, limit = 20): Promise<WhatsAppMessage[]> {
+    const normalizedJid = toWhatsAppJid(chatJid);
+
+    const chatMap = this.messagesStore.get(normalizedJid) || this.messagesStore.get(chatJid);
+    const existingWams = chatMap ? Array.from(chatMap.values()) : [];
+
+    type FetchMessageHistoryFn = (count: number, key: WAMessageKey, ts: number) => Promise<void>;
+    const sockWithHistory = this.socket as unknown as
+      { fetchMessageHistory?: FetchMessageHistoryFn } | undefined;
+
+    if (
+      sockWithHistory &&
+      typeof sockWithHistory.fetchMessageHistory === "function" &&
+      existingWams.length > 0 &&
+      existingWams.length < limit
+    ) {
+      try {
+        const sorted = [...existingWams].sort((a, b) => {
+          const tsA = parseTimestamp(a.messageTimestamp) ?? 0;
+          const tsB = parseTimestamp(b.messageTimestamp) ?? 0;
+          return tsA - tsB;
+        });
+        const oldest = sorted[0];
+        if (oldest && oldest.key && oldest.messageTimestamp) {
+          const oldestTs = parseTimestamp(oldest.messageTimestamp) ?? Date.now() / 1000;
+          await sockWithHistory.fetchMessageHistory(
+            limit - existingWams.length,
+            oldest.key,
+            oldestTs,
+          );
+        }
+      } catch (err) {
+        this.logger.debug("on-demand fetchMessageHistory failed or not supported:", err);
+      }
+    }
+
+    const currentWams = chatMap ? Array.from(chatMap.values()) : [];
+    const results: WhatsAppMessage[] = [];
+
+    for (const wam of currentWams) {
+      if (!wam || !wam.key) continue;
+      results.push(this.normalizeWhatsAppMessage(wam));
+    }
+
+    results.sort((a, b) => b.timestamp - a.timestamp);
 
     return results.slice(0, limit);
   }
@@ -836,7 +932,74 @@ export class BaileysTransport
     }
   }
 
-  private normalizeIncomingMessage(wam: WAMessage): IncomingMessage {
+  /**
+   * Pins a message in a chat using Baileys socket.
+   */
+  public async pinMessage(key: WhatsAppMessageKey, durationInSeconds: number): Promise<void> {
+    if (!this.socket || this.state !== "connected") {
+      throw new ConnectionError(
+        "Cannot pin message: WhatsApp is not connected",
+        "ERR_NOT_CONNECTED",
+      );
+    }
+
+    try {
+      const messageKey: WAMessageKey = {
+        remoteJid: key.remoteJid,
+        id: key.id,
+        ...(key.participant !== undefined ? { participant: key.participant } : {}),
+        ...(key.fromMe !== undefined ? { fromMe: key.fromMe } : {}),
+      };
+
+      await this.socket.sendMessage(key.remoteJid, {
+        pin: messageKey,
+        type: 1,
+        time: durationInSeconds as 86400 | 604800 | 2592000,
+      });
+    } catch (err) {
+      if (err instanceof WhatsAppError) throw err;
+      throw new MessageError(
+        `Failed to pin message ${key.id} in ${key.remoteJid}: ${err instanceof Error ? err.message : String(err)}`,
+        "ERR_PIN_MESSAGE_FAILED",
+        err,
+      );
+    }
+  }
+
+  /**
+   * Unpins a message in a chat using Baileys socket.
+   */
+  public async unpinMessage(key: WhatsAppMessageKey): Promise<void> {
+    if (!this.socket || this.state !== "connected") {
+      throw new ConnectionError(
+        "Cannot unpin message: WhatsApp is not connected",
+        "ERR_NOT_CONNECTED",
+      );
+    }
+
+    try {
+      const messageKey: WAMessageKey = {
+        remoteJid: key.remoteJid,
+        id: key.id,
+        ...(key.participant !== undefined ? { participant: key.participant } : {}),
+        ...(key.fromMe !== undefined ? { fromMe: key.fromMe } : {}),
+      };
+
+      await this.socket.sendMessage(key.remoteJid, {
+        pin: messageKey,
+        type: 2,
+      });
+    } catch (err) {
+      if (err instanceof WhatsAppError) throw err;
+      throw new MessageError(
+        `Failed to unpin message ${key.id} in ${key.remoteJid}: ${err instanceof Error ? err.message : String(err)}`,
+        "ERR_UNPIN_MESSAGE_FAILED",
+        err,
+      );
+    }
+  }
+
+  private normalizeWhatsAppMessage(wam: WAMessage): WhatsAppMessage {
     const key = wam.key;
     const remoteJid =
       key.remoteJid || (key as unknown as { remoteJidAlt?: string }).remoteJidAlt || "";
@@ -849,11 +1012,18 @@ export class BaileysTransport
       : jidToPhoneNumber(remoteJid);
     const from = isGroup ? remoteJid : jidToPhoneNumber(remoteJid);
 
+    const messageKey: WhatsAppMessageKey = {
+      remoteJid: remoteJid || from,
+      id: key.id || "",
+      ...(key.participant ? { participant: key.participant } : {}),
+      ...(key.fromMe !== undefined ? { fromMe: Boolean(key.fromMe) } : {}),
+    };
+
     const text = extractText(wam.message);
     const timestamp =
       typeof wam.messageTimestamp === "number" ? wam.messageTimestamp * 1000 : Date.now();
 
-    const incoming: IncomingMessage = {
+    return {
       id: key.id || "",
       from,
       sender,
@@ -863,6 +1033,16 @@ export class BaileysTransport
       isFromMe,
       session: this.sessionName,
       raw: wam,
+      key: messageKey,
+    };
+  }
+
+  private normalizeIncomingMessage(wam: WAMessage): IncomingMessage {
+    const base = this.normalizeWhatsAppMessage(wam);
+    const remoteJid = wam.key?.remoteJid || "";
+
+    const incoming: IncomingMessage = {
+      ...base,
       reply: async (textOrOptions: string | Omit<MessageOptions, "to">): Promise<SentMessage> => {
         if (!remoteJid) {
           throw new MessageError(

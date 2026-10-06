@@ -191,7 +191,28 @@ const privates = await wa.getChats({ limit: 10, type: "private" });
 const groups = await wa.getChats({ limit: 10, type: "group" });
 ```
 
+### Pin a message
+
+```typescript
+const messageKey = {
+  remoteJid: "120363414422062021@g.us",
+  id: "MESSAGE_ID",
+  participant: "USER_JID"
+};
+
+await wa.pinMessage(messageKey, 30);
+```
+
+Supported pin durations are `1`, `7`, and `30` days. If omitted, duration defaults to `30` days.
+
+### Unpin a message
+
+```typescript
+await wa.unpinMessage(messageKey);
+```
+
 ### isConnected()
+
 
 ```typescript
 wa.isConnected(); // true when the WebSocket connection is open
