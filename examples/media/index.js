@@ -1,4 +1,4 @@
-// Media example: Send images and documents.
+// Media example: Send images, videos, audio, voice notes, and documents.
 //
 // Usage:
 //   cd examples/media
@@ -16,10 +16,19 @@ await wa.connect();
 
 const target = process.env.TEST_PHONE || "919876543210";
 
-// Send an image (uncomment and provide a real path)
+// 1. Send an Image from a file path
 // await wa.sendImage(target, "./photo.jpg", "Check this out! 📸");
 
-// Send a document from a Buffer
+// 2. Send a Video with caption
+// await wa.sendVideo(target, "./clip.mp4", "Watch this clip 🎥");
+
+// 3. Send standard Audio (e.g. MP3/WAV)
+// await wa.sendAudio(target, "./song.mp3");
+
+// 4. Send a Voice Note (Push-To-Talk)
+// await wa.sendAudio(target, "./voice.ogg", true);
+
+// 5. Send a Document from a Buffer
 const pdfBuffer = Buffer.from("%PDF-1.4 sample content");
 await wa.sendDocument({
   to: target,
@@ -27,5 +36,8 @@ await wa.sendDocument({
   filename: "example.pdf",
   caption: "Here's your document 📄",
 });
+
+// 6. Send a Document from a file path
+// await wa.sendDocument(target, "./invoice.pdf", "invoice.pdf", "Your monthly invoice 📊");
 
 console.log("✓ Media sent!");
