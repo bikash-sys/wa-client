@@ -18,7 +18,9 @@ Built on [Baileys](https://github.com/WhiskeySockets/Baileys). Designed for What
 
 - **Send & receive messages** — text, images, videos, audio, documents
 - **Group messaging** — send to groups by name or JID
-- **Chat listing** — fetch recent private, group, or all chats
+- **Chat listing** — fetch recent private, group, or all chats with `getChats()`
+- **Message history** — fetch historical messages with `getMessages()`
+- **Message pinning** — pin messages for 1, 7, or 30 days and unpin with `pinMessage()` / `unpinMessage()`
 - **QR-code authentication** — scan once, auto-reconnect forever
 - **Persistent sessions** — credentials stored on disk per named session
 - **Multiple sessions** — run independent WhatsApp accounts in one process
@@ -191,7 +193,34 @@ const privates = await wa.getChats({ limit: 10, type: "private" });
 const groups = await wa.getChats({ limit: 10, type: "group" });
 ```
 
-### Pin a message
+### getMessages()
+
+```typescript
+const messages = await wa.getMessages("918240892552@s.whatsapp.net", 50);
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `chatJid` | `string` | — | Target phone number, contact JID, or group JID |
+| `limit` | `number` | `20` | Max historical messages to fetch (1–1000) |
+
+Returns an array of `WhatsAppMessage` objects:
+
+```typescript
+interface WhatsAppMessage {
+  id: string;          // Unique message ID
+  from: string;        // Chat JID
+  sender?: string;     // Participant JID (in group chats)
+  text?: string;       // Text content
+  timestamp: number;   // Unix timestamp (ms)
+  isGroup: boolean;    // Whether message is from a group
+  isFromMe: boolean;   // Whether message was sent by self
+  session?: string;    // Active session profile name
+  key: WhatsAppMessageKey; // Structured key object (used for pinning/referencing)
+}
+```
+
+### pinMessage()
 
 ```typescript
 const messageKey = {
@@ -200,12 +229,16 @@ const messageKey = {
   participant: "USER_JID"
 };
 
-await wa.pinMessage(messageKey, 30);
+// Pin for 30 days (default)
+await wa.pinMessage(messageKey);
+
+// Pin for 7 days (supported: 1, 7, or 30 days)
+await wa.pinMessage(messageKey, 7);
 ```
 
-Supported pin durations are `1`, `7`, and `30` days. If omitted, duration defaults to `30` days.
+Supported pin durations are `1`, `7`, and `30` days. If omitted, duration defaults to `30` days (2,592,000 seconds).
 
-### Unpin a message
+### unpinMessage()
 
 ```typescript
 await wa.unpinMessage(messageKey);
@@ -280,6 +313,7 @@ wa.on("message", async (msg) => {
 | `isGroup` | `boolean` | Whether the message is from a group |
 | `isFromMe` | `boolean` | Whether sent by the authenticated account |
 | `session` | `string?` | Session profile name |
+| `key` | `WhatsAppMessageKey` | Structured key object (`remoteJid`, `id`, `participant?`, `fromMe?`) |
 | `reply(text)` | `function` | Reply with automatic quoting |
 
 ---

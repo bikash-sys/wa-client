@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-10-07
+
+### Added
+- **`feat: improve media and document message sending`**: Enhanced `sendImage()`, `sendVideo()`, `sendAudio()`, and `sendDocument()` media APIs. Added full support for both local file paths and in-memory `Buffer` payloads, automatic MIME type detection, document filename sanitization (preventing directory traversal), media size validation (enforcing 100 MB max limit), custom captions, audio voice notes (`ptt: true`), video notes (`ptv: true`), and comprehensive error handling.
+- **`wa.getMessages(chatJid, limit?)` API**: Fetch historical WhatsApp message history for direct contacts and groups with configurable limits (1–1000, default 20).
+- **`wa.pinMessage(messageKey, duration?)` & `wa.unpinMessage(messageKey)` APIs**: Pin WhatsApp messages in chats for 1, 7, or 30 days (default 30 days / 2,592,000 seconds) and unpin messages using structured `WhatsAppMessageKey` objects (`remoteJid`, `id`, `participant?`, `fromMe?`).
+- **Persistent Message Metadata**: Persists historical messages across process restarts to support reliable chat history querying and message pinning.
+
+### Fixed
+- **Message Timestamp Normalization**: Corrected Unix timestamp unit parsing on all incoming and historical `WhatsAppMessage` objects to ensure timestamps are accurately reported in milliseconds.
+
 ## [0.1.3] - 2026-09-29
 
 ### Added
