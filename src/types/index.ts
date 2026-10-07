@@ -8,6 +8,47 @@ export type ConnectionState =
   "disconnected" | "connecting" | "qr" | "connected" | "reconnecting" | "logged_out";
 
 /**
+ * Configuration options for automatic reconnection behavior.
+ */
+export interface ReconnectOptions {
+  /**
+   * Whether to automatically attempt reconnection when temporary connection issues occur.
+   * Defaults to true.
+   */
+  enabled?: boolean;
+
+  /**
+   * Maximum number of consecutive reconnection attempts before giving up.
+   * Defaults to 5.
+   */
+  maxAttempts?: number;
+
+  /**
+   * Base reconnection delay in milliseconds.
+   * Defaults to 2000 ms.
+   */
+  delay?: number;
+
+  /**
+   * Maximum reconnection delay cap in milliseconds.
+   * Defaults to 30000 ms (30 seconds).
+   */
+  maxDelay?: number;
+}
+
+/**
+ * Information payload emitted with the `reconnecting` event.
+ */
+export interface ReconnectInfo {
+  /** The 1-based attempt index of the current reconnection attempt */
+  attempt: number;
+  /** The calculated backoff delay in milliseconds before this reconnect attempt fires */
+  delay: number;
+  /** The maximum number of reconnect attempts allowed before giving up */
+  maxAttempts: number;
+}
+
+/**
  * Options for configuring the WhatsApp client.
  */
 export interface WhatsAppOptions {
@@ -41,19 +82,22 @@ export interface WhatsAppOptions {
   logger?: Logger | LogLevel | boolean;
 
   /**
-   * Whether to automatically attempt reconnection when temporary connection issues occur.
+   * Whether to automatically attempt reconnection when temporary connection issues occur,
+   * or a configuration object with custom reconnect settings.
    * Defaults to true.
    */
-  reconnect?: boolean;
+  reconnect?: boolean | ReconnectOptions;
 
   /**
    * Maximum number of consecutive reconnection attempts before giving up.
+   * Preserved for backwards compatibility.
    * Defaults to 5.
    */
   maxReconnectAttempts?: number;
 
   /**
    * Base reconnection interval in milliseconds.
+   * Preserved for backwards compatibility.
    * Defaults to 2000 ms.
    */
   reconnectIntervalMs?: number;
@@ -330,7 +374,7 @@ export type WhatsAppEvents = {
   /** Emitted when the connection closes or disconnects */
   disconnected: (reason?: string) => void;
   /** Emitted when an automatic reconnect attempt is triggered */
-  reconnecting: (attempt: number, maxAttempts: number) => void;
+  reconnecting: (info: ReconnectInfo) => void;
   /** Emitted when an incoming message is received */
   message: (message: IncomingMessage) => void;
   /** Emitted when a message has been sent successfully */

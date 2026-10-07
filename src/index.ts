@@ -53,6 +53,8 @@ export type { Logger, LogLevel } from "./utils/logger.js";
 // Public Type Definitions
 export type {
   WhatsAppOptions,
+  ReconnectOptions,
+  ReconnectInfo,
   SessionInfo,
   WhatsAppStatus,
   WhatsAppHealth,

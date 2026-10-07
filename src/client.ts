@@ -1034,8 +1034,8 @@ export class WhatsApp extends TypedEventEmitter<WhatsAppEvents> {
 
       if (!isLoggedOut) {
         this.connectionManager.scheduleReconnect(
-          (attempt, maxAttempts) => {
-            this.emit("reconnecting", attempt, maxAttempts);
+          (info) => {
+            this.emit("reconnecting", info);
           },
           (err) => {
             this.emit("error", err);
