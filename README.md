@@ -326,7 +326,7 @@ wa.on("message", async (msg) => {
 | `connected` | `()` | WebSocket connection established |
 | `ready` | `()` | Authenticated and ready to send/receive |
 | `disconnected` | `(reason?: string)` | Connection closed |
-| `reconnecting` | `(attempt, maxAttempts)` | Reconnection attempt triggered |
+| `reconnecting` | `(info: ReconnectInfo)` | Reconnection attempt triggered with `{ attempt, delay, maxAttempts }` |
 | `message` | `(message: IncomingMessage)` | Incoming message received |
 | `message.sent` | `(message: SentMessage)` | Message sent successfully |
 | `error` | `(error: Error)` | Connection or protocol error |

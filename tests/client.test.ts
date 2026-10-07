@@ -3,7 +3,12 @@ import { WhatsApp } from "../src/client.js";
 import { WhatsAppError } from "../src/errors/errors.js";
 import { TypedEventEmitter } from "../src/events/event-emitter.js";
 import type { WhatsAppTransport, TransportEvents } from "../src/transport/transport.interface.js";
-import type { IncomingMessage, ConnectionState, WhatsAppChat } from "../src/types/index.js";
+import type {
+  IncomingMessage,
+  ConnectionState,
+  WhatsAppChat,
+  ReconnectInfo,
+} from "../src/types/index.js";
 
 class MockTransport extends TypedEventEmitter<TransportEvents> implements WhatsAppTransport {
   private state: ConnectionState = "disconnected";
@@ -722,6 +727,176 @@ describe("WhatsApp Client", () => {
       expect(result.id).toBe("sent-text-1");
       expect(wa.isConnected()).toBe(true);
       expect(transport.disconnect).not.toHaveBeenCalled();
+
+      await wa.destroy();
+    });
+  });
+
+  describe("Automatic Reconnection & Session Recovery", () => {
+    it("should accept object-based reconnect configuration and emit reconnecting with typed ReconnectInfo payload", async () => {
+      const transport = new MockTransport();
+      const wa = new WhatsApp({
+        transport,
+        session: "reconnect-obj-session",
+        reconnect: {
+          enabled: true,
+          maxAttempts: 4,
+          delay: 100,
+          maxDelay: 1000,
+        },
+        logger: false,
+      });
+
+      await wa.connect();
+
+      const reconnectSpy = vi.fn();
+      wa.on("reconnecting", reconnectSpy);
+
+      // Simulate a temporary disconnect (not a logout)
+      transport.setState("disconnected");
+      transport.emit("disconnected", "connection reset by peer", false);
+
+      expect(reconnectSpy).toHaveBeenCalledTimes(1);
+      expect(reconnectSpy).toHaveBeenCalledWith(
+        expect.objectContaining<ReconnectInfo>({
+          attempt: 1,
+          maxAttempts: 4,
+          delay: expect.any(Number),
+        }),
+      );
+
+      await wa.destroy();
+    });
+
+    it("should recover from temporary disconnect and reconnect without emitting QR code", async () => {
+      const transport = new MockTransport();
+      const wa = new WhatsApp({
+        transport,
+        session: "temp-disconnect-session",
+        reconnect: {
+          enabled: true,
+          maxAttempts: 3,
+          delay: 20,
+        },
+        logger: false,
+      });
+
+      const qrSpy = vi.fn();
+      const readySpy = vi.fn();
+      wa.on("qr", qrSpy);
+      wa.on("ready", readySpy);
+      await wa.connect();
+      expect(readySpy).toHaveBeenCalledTimes(1);
+
+      // Wait for reconnect to complete
+      const reconnected = new Promise<void>((resolve) => {
+        wa.once("connected", () => resolve());
+      });
+
+      // Simulate temporary network drop
+      transport.setState("disconnected");
+      transport.emit("disconnected", "network timeout", false);
+
+      await reconnected;
+
+      expect(transport.connect).toHaveBeenCalledTimes(2);
+      expect(wa.isConnected()).toBe(true);
+      // No QR code should have been emitted during reconnection
+      expect(qrSpy).not.toHaveBeenCalled();
+
+      await wa.destroy();
+    });
+
+    it("should stop reconnection attempts and emit logged_out on permanent logout", async () => {
+      const transport = new MockTransport();
+      const wa = new WhatsApp({
+        transport,
+        session: "logout-session",
+        reconnect: {
+          enabled: true,
+          maxAttempts: 5,
+          delay: 20,
+        },
+        logger: false,
+      });
+
+      const loggedOutSpy = vi.fn();
+      const reconnectSpy = vi.fn();
+      wa.on("logged_out", loggedOutSpy);
+      wa.on("reconnecting", reconnectSpy);
+
+      await wa.connect();
+
+      // Simulate permanent logout event
+      transport.setState("logged_out");
+      transport.emit("logged_out");
+      transport.emit("disconnected", "logged out by user", true);
+
+      expect(loggedOutSpy).toHaveBeenCalledTimes(1);
+      expect(reconnectSpy).not.toHaveBeenCalled();
+      expect(wa.isReconnecting()).toBe(false);
+
+      await wa.destroy();
+    });
+
+    it("should share the same reconnection attempt across concurrent sends during temporary disconnect", async () => {
+      const transport = new MockTransport();
+      const connectResolvers: Array<() => void> = [];
+
+      transport.connect = vi.fn().mockImplementation(() => {
+        return new Promise<void>((resolve) => {
+          connectResolvers.push(() => {
+            transport.setState("connected");
+            transport.emit("connected");
+            transport.emit("ready");
+            resolve();
+          });
+        });
+      });
+
+      const wa = new WhatsApp({
+        transport,
+        session: "concurrent-reconnect-send",
+        reconnect: {
+          enabled: true,
+          maxAttempts: 3,
+          delay: 10,
+        },
+        logger: false,
+      });
+
+      // Initial connection
+      const initialConnect = wa.connect();
+      const firstResolver = connectResolvers.shift();
+      if (firstResolver) firstResolver();
+      await initialConnect;
+
+      expect(wa.isConnected()).toBe(true);
+
+      // Simulate disconnect
+      transport.setState("disconnected");
+      transport.emit("disconnected", "temporary drop", false);
+
+      // Issue concurrent sends while disconnected
+      const send1 = wa.send("919876543210", "Queued 1");
+      const send2 = wa.send("919876543210", "Queued 2");
+      const send3 = wa.send("919876543210", "Queued 3");
+
+      // Wait a moment for connection attempt to be scheduled
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Resolve the single in-flight connection
+      while (connectResolvers.length > 0) {
+        const res = connectResolvers.shift();
+        if (res) res();
+      }
+
+      const [res1, res2, res3] = await Promise.all([send1, send2, send3]);
+
+      expect(res1.id).toBe("sent-text-1");
+      expect(res2.id).toBe("sent-text-1");
+      expect(res3.id).toBe("sent-text-1");
+      expect(transport.sendTextMessage).toHaveBeenCalledTimes(3);
 
       await wa.destroy();
     });
